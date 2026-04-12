@@ -1,0 +1,99 @@
+import ForecastChart from '../components/forecast/ForecastChart'
+import SentimentChart from '../components/forecast/SentimentChart'
+import MarketSignals from '../components/forecast/MarketSignals'
+import { mockForecastData, mockMarketSignals } from '../data/mockData'
+
+export default function Forecast() {
+  const { beefPriceForecast, lambPriceForecast, sentimentTimeline, categoryBreakdown } = mockForecastData
+  const maxCount = Math.max(...categoryBreakdown.map((d) => d.count))
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-header-title">Forecast & Market Signals</h1>
+        <p className="page-header-subtitle">
+          Price projections, sentiment trends, and forward market intelligence
+        </p>
+      </div>
+
+      {/* Live market signals */}
+      <div className="section-header">
+        <div className="section-title">Live Market Indicators</div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+          Updated: April 10, 2024 — 07:00 AEST
+        </span>
+      </div>
+      <MarketSignals signals={mockMarketSignals} />
+
+      {/* Price forecasts */}
+      <div className="section-header" style={{ marginBottom: 14 }}>
+        <div className="section-title">Price Forecasts (c/kg cwt)</div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+          Dashed line = AI model projection · Shaded band = confidence range
+        </span>
+      </div>
+      <div className="forecast-grid">
+        <div className="chart-card">
+          <div className="chart-card-title">Beef — Eastern Young Cattle Indicator</div>
+          <div className="chart-card-subtitle">EYCI (c/kg cwt) — Actual & 5-month forecast</div>
+          <ForecastChart
+            data={beefPriceForecast}
+            color="#2d8653"
+            unit="c"
+          />
+        </div>
+        <div className="chart-card">
+          <div className="chart-card-title">Lamb — National Trade Indicator</div>
+          <div className="chart-card-subtitle">NTI (c/kg cwt) — Actual & 5-month forecast</div>
+          <ForecastChart
+            data={lambPriceForecast}
+            color="#c9a227"
+            unit="c"
+          />
+        </div>
+      </div>
+
+      {/* Sentiment + category breakdown */}
+      <div className="forecast-grid">
+        <div className="chart-card">
+          <div className="chart-card-title">Industry Sentiment Index</div>
+          <div className="chart-card-subtitle">
+            Composite sentiment score derived from all monitored sources (−1 bearish → +1 bullish)
+          </div>
+          <SentimentChart data={sentimentTimeline} />
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-card-title">News Category Distribution</div>
+          <div className="chart-card-subtitle">Article volume by category — last 30 days</div>
+          <div className="category-breakdown-list" style={{ marginTop: 8 }}>
+            {categoryBreakdown.map((item) => (
+              <div key={item.category} className="category-breakdown-item">
+                <span className="category-breakdown-name">{item.category}</span>
+                <div className="category-breakdown-bar-wrap">
+                  <div
+                    className="category-breakdown-bar"
+                    style={{ width: `${(item.count / maxCount) * 100}%` }}
+                  />
+                </div>
+                <span className="category-breakdown-count">{item.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Disclaimer */}
+      <div style={{
+        padding: '14px 18px', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)',
+        borderRadius: 'var(--radius-md)', fontSize: '0.8125rem', color: 'var(--text-muted)',
+        lineHeight: 1.6, marginTop: 8,
+      }}>
+        <strong style={{ color: 'var(--text-secondary)' }}>Disclaimer:</strong> Price forecasts are generated
+        by AI models trained on historical saleyard data, seasonal patterns, and current supply-demand signals.
+        They are indicative only and should not be relied upon as financial or trading advice. Always consult
+        with your livestock agent, agronomist, or financial adviser before making commercial decisions.
+      </div>
+    </div>
+  )
+}
