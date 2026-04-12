@@ -1,16 +1,14 @@
 // ====================================================
 // KEEP ME POSTED — useNews Hook
-// Central data management for news articles.
-// Replace fetchArticles() with real API call in production.
+// Reads live data from Supabase when configured,
+// falls back to mock data for local development.
 // ====================================================
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { mockArticles } from '../data/mockData'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { applyFilters, computeAggregateSentiment, getImpactBreakdown } from '../utils/scoring'
 
-/**
- * Default filter state — all articles, newest first
- */
 const DEFAULT_FILTERS = {
   impact: 'ALL',
   region: 'ALL',
@@ -19,72 +17,141 @@ const DEFAULT_FILTERS = {
   sortBy: 'date',
 }
 
+// How many articles to load per page
+const PAGE_SIZE = 50
+
+// ── Data fetching ──────────────────────────────────────────────────────────
+
 /**
- * Simulates an async API fetch — swap for real fetch() in production
- * @returns {Promise<Article[]>}
+ * Fetch from Supabase, ordered by published_at desc.
+ * Returns articles normalised to the same shape as mockData.
  */
-async function fetchArticles() {
-  // Simulate network latency
+async function fetchFromSupabase() {
+  const { data, error } = await supabase
+    .from('articles')
+    .select(`
+      id,
+      headline,
+      summary,
+      why_it_matters,
+      category,
+      impact,
+      regions,
+      source,
+      source_url     as sourceUrl,
+      published_at   as publishedAt,
+      short_term_impact    as shortTermImpact,
+      medium_term_impact   as mediumTermImpact,
+      strategic_recommendation as strategicRecommendation,
+      confidence_score     as confidenceScore,
+      trending,
+      tags,
+      sentiment,
+      created_at
+    `)
+    .order('published_at', { ascending: false })
+    .limit(PAGE_SIZE)
+
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+/**
+ * Fallback: mock data with artificial delay (simulates network)
+ */
+async function fetchMockData() {
   await new Promise((r) => setTimeout(r, 400))
   return mockArticles
 }
 
-/**
- * useNews — main data hook
- *
- * Returns articles with filtering, sorting, and derived analytics.
- *
- * Usage:
- *   const { articles, filters, setFilter, stats, loading } = useNews()
- */
+// ── Hook ───────────────────────────────────────────────────────────────────
+
 export function useNews() {
   const [allArticles, setAllArticles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
   const [lastRefreshed, setLastRefreshed] = useState(null)
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [usingLive, setUsingLive]     = useState(false)
+  const [filters, setFilters]         = useState(DEFAULT_FILTERS)
+  const realtimeRef = useRef(null)
 
-  // Initial load
+  // ── Initial load ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     load()
-  }, [])
+    // Cleanup realtime subscription on unmount
+    return () => { realtimeRef.current?.unsubscribe() }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchArticles()
-      setAllArticles(data)
+      if (isSupabaseConfigured) {
+        const data = await fetchFromSupabase()
+        setAllArticles(data)
+        setUsingLive(true)
+        subscribeToRealtime()
+      } else {
+        // Local dev / no Supabase credentials — use mock data
+        const data = await fetchMockData()
+        setAllArticles(data)
+        setUsingLive(false)
+      }
       setLastRefreshed(new Date())
     } catch (err) {
-      setError(err.message ?? 'Failed to load news feed')
+      console.warn('Supabase fetch failed, falling back to mock data:', err)
+      // Graceful fallback
+      const data = await fetchMockData()
+      setAllArticles(data)
+      setUsingLive(false)
+      setError(null) // suppress error — mock data is serving
     } finally {
       setLoading(false)
     }
   }
 
-  /**
-   * Update a single filter key
-   */
+  // ── Realtime subscription — new articles appear without refresh ──────────
+
+  function subscribeToRealtime() {
+    if (!supabase) return
+    realtimeRef.current?.unsubscribe()
+
+    realtimeRef.current = supabase
+      .channel('articles-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'articles' },
+        (payload) => {
+          const newArticle = payload.new
+          setAllArticles((prev) => {
+            // Avoid duplicates
+            if (prev.some((a) => a.id === newArticle.id)) return prev
+            return [newArticle, ...prev]
+          })
+          setLastRefreshed(new Date())
+        },
+      )
+      .subscribe()
+  }
+
+  // ── Filters ──────────────────────────────────────────────────────────────
+
   const setFilter = useCallback((key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  /**
-   * Reset all filters to defaults
-   */
   const resetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS)
   }, [])
 
-  /**
-   * Filtered + sorted articles (memoized)
-   */
-  const articles = useMemo(() => applyFilters(allArticles, filters), [allArticles, filters])
+  // ── Derived data (all memoized) ──────────────────────────────────────────
 
-  /**
-   * Derived stats across the full unfiltered dataset
-   */
+  const articles = useMemo(
+    () => applyFilters(allArticles, filters),
+    [allArticles, filters],
+  )
+
   const stats = useMemo(
     () => ({
       total: allArticles.length,
@@ -96,19 +163,16 @@ export function useNews() {
     [allArticles, articles],
   )
 
-  /**
-   * Get a single article by ID
-   */
   const getArticle = useCallback(
     (id) => allArticles.find((a) => a.id === id) ?? null,
     [allArticles],
   )
 
-  /**
-   * High-impact articles only (for dashboard feed)
-   */
   const highImpactArticles = useMemo(
-    () => allArticles.filter((a) => a.impact === 'HIGH').sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)),
+    () =>
+      allArticles
+        .filter((a) => a.impact === 'HIGH')
+        .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)),
     [allArticles],
   )
 
@@ -118,6 +182,7 @@ export function useNews() {
     highImpactArticles,
     loading,
     error,
+    usingLive,        // true = live Supabase data, false = mock
     filters,
     setFilter,
     resetFilters,
