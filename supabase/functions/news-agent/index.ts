@@ -6,16 +6,21 @@
  *   1. Fetches articles from free RSS feeds + NewsAPI (optional)
  *   2. Deduplicates against articles already in the database
  *   3. Filters candidates for Australian beef/lamb relevance
- *   4. Sends each new relevant article to Claude for full analysis
+ *   4. Sends each new relevant article to Gemini Flash for full analysis
  *   5. Persists analysed articles to Supabase
  *
- * Environment variables (set in Supabase dashboard → Settings → Edge Functions):
- *   ANTHROPIC_API_KEY   — required
- *   NEWS_API_KEY        — optional (newsapi.org free tier)
+ * 100% FREE to run:
+ *   - Gemini 1.5 Flash: free tier — 1,500 requests/day (we use ~150)
+ *   - Get key at: https://aistudio.google.com/app/apikey (no credit card)
+ *
+ * Environment variables (Supabase dashboard → Settings → Edge Functions → Secrets):
+ *   GEMINI_API_KEY              — required (free at aistudio.google.com)
+ *   SUPABASE_SERVICE_ROLE_KEY   — required (auto-injected by Supabase)
+ *   NEWS_API_KEY                — optional (newsapi.org free tier)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import Anthropic from 'https://esm.sh/@anthropic-ai/sdk@0.24.0'
+import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 import { XMLParser } from 'https://esm.sh/fast-xml-parser@4.3.4'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -114,34 +119,34 @@ const RELEVANCE_KEYWORDS = [
   'grazing', 'producers', 'processor',
 ]
 
-/** Claude system prompt — defines the analyst persona and JSON schema */
+/**
+ * Gemini system prompt — analyst persona + strict JSON schema.
+ * Gemini's responseMimeType:"application/json" enforces valid JSON output,
+ * so we don't need to strip markdown fences.
+ */
 const SYSTEM_PROMPT = `You are a senior business intelligence analyst for the Australian beef and lamb industry. You assess news articles for operational and strategic impact on livestock processors, exporters, traders, and producers operating in South Australia (SA), Victoria (VIC), New South Wales (NSW), and Tasmania (TAS).
 
-Analyze the provided article and respond with ONLY a valid JSON object — no preamble, no explanation, no markdown fences. Just raw JSON.
+Return a JSON object with exactly these fields:
+- headline: concise specific headline, max 130 characters, improve if vague
+- summary: 2–4 sentence executive summary covering what happened, key facts, and magnitude
+- why_it_matters: 1–2 sentences on direct business relevance to AU beef/lamb operators
+- category: exactly one of "Market & Economy", "Legislation / Regulation", "Competition", "Climate / Weather", "Supply Chain", "Export / Trade", "Production Costs", "Forecasts / Projections"
+- impact: exactly "HIGH", "MEDIUM", or "LOW"
+- regions: array of applicable values from ["SA", "VIC", "NSW", "TAS", "National", "Global"]
+- short_term_impact: specific operational impact in next 0–60 days
+- medium_term_impact: strategic impact in 60–180 days
+- strategic_recommendation: one clear actionable recommendation for beef/lamb operators
+- confidence_score: integer 60–98 reflecting source reliability and signal strength
+- tags: array of 3–8 specific lowercase keyword tags
+- sentiment: float -1.0 (very negative for industry) to 1.0 (very positive)
+- is_relevant: true if article clearly impacts AU beef/lamb industry, false to discard
 
-Required JSON structure:
-{
-  "headline": "concise, specific headline (max 130 characters — improve if vague)",
-  "summary": "2–4 sentence executive summary covering what happened, key facts, and magnitude",
-  "why_it_matters": "1–2 sentences on direct business relevance to AU beef/lamb operators",
-  "category": one of exactly: "Market & Economy" | "Legislation / Regulation" | "Competition" | "Climate / Weather" | "Supply Chain" | "Export / Trade" | "Production Costs" | "Forecasts / Projections",
-  "impact": "HIGH" | "MEDIUM" | "LOW",
-  "regions": array of applicable values from: ["SA", "VIC", "NSW", "TAS", "National", "Global"],
-  "short_term_impact": "Specific operational impact in next 0–60 days for AU beef/lamb businesses",
-  "medium_term_impact": "Strategic impact in 60–180 days",
-  "strategic_recommendation": "One clear, actionable recommendation for beef/lamb business operators",
-  "confidence_score": integer 60–98 reflecting source reliability and signal strength,
-  "tags": array of 3–8 specific lowercase keyword tags,
-  "sentiment": float from -1.0 (very negative for industry) to 1.0 (very positive),
-  "is_relevant": true if article clearly impacts AU beef/lamb industry, false to discard
-}
+Impact guide:
+HIGH = regulatory changes, drought/biosecurity emergencies, export closures, >10% price moves, major supply disruptions
+MEDIUM = 5–15% price moves, weather events, competitor activity, RBA/currency, feed cost shifts
+LOW = minor local news, <5% price moves, general rural content
 
-Impact scoring guide:
-- HIGH: Regulatory/policy changes, drought/biosecurity emergencies, export market closures, >10% price movements, major supply chain disruptions
-- MEDIUM: 5–15% price movements, significant weather events, competitor activity, RBA/currency impacts, feed cost shifts
-- LOW: Minor local market news, <5% price movements, general interest rural content
-
-If the article has no clear relevance to Australian beef or lamb (e.g. poultry, pork, NZ-only, unrelated), set is_relevant to false.`
+Set is_relevant=false for articles about poultry, pork, NZ-only topics, or unrelated industries.`
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -230,44 +235,38 @@ async function fetchNewsAPI(apiKey: string): Promise<RawArticle[]> {
   return articles
 }
 
-/** Call Claude to analyse a single article */
+/**
+ * Analyse a single article with Gemini 1.5 Flash (free tier).
+ * Uses responseMimeType:"application/json" so the model is constrained
+ * to return valid JSON — no parsing gymnastics needed.
+ */
 async function analyseArticle(
-  client: Anthropic,
+  model: any, // Gemini GenerativeModel instance
   article: RawArticle,
   baseConfidence: number,
 ): Promise<AnalysedArticle | null> {
-  const userContent = `
-Source: ${article.source}
+  const userContent = `Source: ${article.source}
 Published: ${article.publishedAt}
 URL: ${article.url}
 
 Title: ${article.title}
 
 Content:
-${(article.description + '\n' + (article.content ?? '')).slice(0, 3000)}
-`.trim()
+${(article.description + '\n' + (article.content ?? '')).slice(0, 3000)}`
 
   try {
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
-    })
+    const result = await model.generateContent(userContent)
+    const raw = result.response.text()
+    const parsed = JSON.parse(raw) as AnalysedArticle
 
-    const raw = message.content[0].type === 'text' ? message.content[0].text : ''
-    // Strip any accidental markdown fences
-    const jsonStr = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    const result = JSON.parse(jsonStr) as AnalysedArticle
-
-    // Blend AI confidence with source base confidence
-    result.confidence_score = Math.round(
-      result.confidence_score * 0.7 + baseConfidence * 0.3,
+    // Blend Gemini's confidence score with known source reliability
+    parsed.confidence_score = Math.round(
+      parsed.confidence_score * 0.7 + baseConfidence * 0.3,
     )
 
-    return result
+    return parsed
   } catch (err) {
-    console.error(`Claude analysis failed for "${article.title}":`, err)
+    console.error(`Gemini analysis failed for "${article.title}":`, err)
     return null
   }
 }
@@ -293,8 +292,17 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   )
 
-  const anthropic = new Anthropic({
-    apiKey: Deno.env.get('ANTHROPIC_API_KEY') ?? '',
+  // Gemini Flash — free tier (1,500 req/day)
+  // Get your key at: https://aistudio.google.com/app/apikey
+  const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY') ?? '')
+  const geminiModel = genAI.getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    systemInstruction: SYSTEM_PROMPT,
+    generationConfig: {
+      responseMimeType: 'application/json', // forces valid JSON output
+      temperature: 0.2,                     // low = consistent structured output
+      maxOutputTokens: 1024,
+    },
   })
 
   const newsApiKey = Deno.env.get('NEWS_API_KEY') ?? ''
@@ -366,17 +374,17 @@ Deno.serve(async (req) => {
     stats.articles_new = newCandidates.length
     console.log(`${newCandidates.length} new articles to process (${externalIds.length - newCandidates.length} duplicates skipped)`)
 
-    // ── 3. Pre-filter for likely relevance (save Claude API calls) ────────
+    // ── 3. Pre-filter for likely relevance (save Gemini API calls) ──────────
 
     const relevant = newCandidates.filter(isLikelyRelevant)
     console.log(`${relevant.length} articles passed relevance pre-filter`)
 
-    // ── 4. Analyse each new article with Claude ───────────────────────────
+    // ── 4. Analyse each new article with Gemini Flash (free) ─────────────
 
     const toInsert: any[] = []
 
     for (const article of relevant) {
-      const analysis = await analyseArticle(anthropic, article, article.baseConfidence)
+      const analysis = await analyseArticle(geminiModel, article, article.baseConfidence)
 
       if (!analysis || !analysis.is_relevant) {
         console.log(`Discarded: "${article.title.slice(0, 60)}"`)
@@ -406,8 +414,8 @@ Deno.serve(async (req) => {
 
       stats.articles_analysed++
 
-      // Rate-limit: ~4 Claude calls/sec max to stay well within limits
-      await new Promise((r) => setTimeout(r, 250))
+      // Gemini free tier: 15 requests/min → wait 4s between calls to stay safe
+      await new Promise((r) => setTimeout(r, 4_000))
     }
 
     // ── 5. Bulk insert analysed articles ─────────────────────────────────

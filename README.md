@@ -8,13 +8,14 @@ An autonomous agent monitors 8+ agricultural news sources every hour, sends each
 
 ## Live stack
 
-| Layer | Service | Notes |
+| Layer | Service | Cost |
 |---|---|---|
-| Frontend | Vercel | Auto-deploys from GitHub |
+| Frontend | Vercel | Free |
 | Database | Supabase (PostgreSQL) | Free tier |
-| AI Agent | Supabase Edge Function | Deno, runs hourly |
-| LLM | Claude Haiku | ~$0.001 per article |
-| News sources | RSS feeds + NewsAPI | 8 free RSS feeds built-in |
+| AI Agent | Supabase Edge Function | Free tier |
+| LLM | **Google Gemini Flash** | **Free** — 1,500 req/day |
+| News sources | RSS feeds + NewsAPI | Free |
+| **Total** | | **$0/month** |
 
 ---
 
@@ -56,9 +57,9 @@ supabase functions deploy news-agent
 
 Set the secrets the function needs:
 ```bash
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=eyJ...
-supabase secrets set NEWS_API_KEY=xxxx   # optional
+supabase secrets set GEMINI_API_KEY=AIzaSy...          # free key from aistudio.google.com
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=eyJ...  # from Supabase Settings → API
+supabase secrets set NEWS_API_KEY=xxxx                  # optional
 ```
 
 Test it runs correctly:
@@ -75,10 +76,12 @@ You should see a JSON response like:
 
 | Key | Where | Cost |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | ~$0.001/article |
-| `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) | Free (100 req/day) |
+| `GEMINI_API_KEY` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) | **Free** — no credit card |
+| `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) | Free tier (100 req/day) |
 
-The agent works on RSS feeds alone (free, no quota) — NewsAPI is optional but improves coverage.
+**Gemini free tier:** 1,500 requests/day — our agent uses ~150/day maximum. No credit card required.
+
+The agent works on RSS feeds alone (free, no quota) — NewsAPI is optional but adds extra coverage.
 
 ### 4 — Deploy frontend to Vercel
 
@@ -174,12 +177,13 @@ keep-me-posted/
 
 ---
 
-## Estimated running costs
+## Running costs — $0/month
 
-| Item | Cost |
-|---|---|
-| Supabase (free tier) | $0/mo |
-| Vercel (hobby) | $0/mo |
-| Claude Haiku (~200 articles/day) | ~$6/mo |
-| NewsAPI (free) | $0/mo |
-| **Total** | **~$6/mo** |
+| Item | Free tier | Our usage |
+|---|---|---|
+| Supabase | 500MB DB, 500K Edge calls | ~730 calls/month (1/hr) |
+| Vercel | Unlimited hobby deploys | 1 project |
+| Gemini Flash | 1,500 requests/day | ~150/day |
+| RSS feeds | Unlimited | 8 feeds/hr |
+| NewsAPI | 100 req/day | Optional |
+| **Total** | | **$0/month** |
