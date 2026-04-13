@@ -38,12 +38,12 @@ async function fetchFromSupabase() {
       impact,
       regions,
       source,
-      source_url     as sourceUrl,
-      published_at   as publishedAt,
-      short_term_impact    as shortTermImpact,
-      medium_term_impact   as mediumTermImpact,
-      strategic_recommendation as strategicRecommendation,
-      confidence_score     as confidenceScore,
+      source_url,
+      published_at,
+      short_term_impact,
+      medium_term_impact,
+      strategic_recommendation,
+      confidence_score,
       trending,
       tags,
       sentiment,
@@ -53,7 +53,17 @@ async function fetchFromSupabase() {
     .limit(PAGE_SIZE)
 
   if (error) throw new Error(error.message)
-  return data ?? []
+
+  // Normalise snake_case DB columns to camelCase for the frontend
+  return (data ?? []).map((a) => ({
+    ...a,
+    sourceUrl:               a.source_url,
+    publishedAt:             a.published_at,
+    shortTermImpact:         a.short_term_impact,
+    mediumTermImpact:        a.medium_term_impact,
+    strategicRecommendation: a.strategic_recommendation,
+    confidenceScore:         a.confidence_score,
+  }))
 }
 
 /**
