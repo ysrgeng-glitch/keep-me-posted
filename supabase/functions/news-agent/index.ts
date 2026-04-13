@@ -6,21 +6,20 @@
  *   1. Fetches articles from free RSS feeds + NewsAPI (optional)
  *   2. Deduplicates against articles already in the database
  *   3. Filters candidates for Australian beef/lamb relevance
- *   4. Sends each new relevant article to Gemini Flash for full analysis
+ *   4. Sends each new relevant article to Groq (Llama) for full analysis
  *   5. Persists analysed articles to Supabase
  *
  * 100% FREE to run:
- *   - Gemini 1.5 Flash: free tier — 1,500 requests/day (we use ~150)
- *   - Get key at: https://aistudio.google.com/app/apikey (no credit card)
+ *   - Groq: free tier — 14,400 req/day on Llama 3.3-70B (no credit card)
+ *   - Get key at: https://console.groq.com (sign up with GitHub, takes 1 min)
  *
  * Environment variables (Supabase dashboard → Settings → Edge Functions → Secrets):
- *   GEMINI_API_KEY              — required (free at aistudio.google.com)
+ *   GROQ_API_KEY                — required (free at console.groq.com)
  *   SUPABASE_SERVICE_ROLE_KEY   — required (auto-injected by Supabase)
  *   NEWS_API_KEY                — optional (newsapi.org free tier)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai@0.21.0'
 import { XMLParser } from 'https://esm.sh/fast-xml-parser@4.3.4'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -117,6 +116,14 @@ const RELEVANCE_KEYWORDS = [
   'agricultural', 'agriculture', 'agribusiness', 'farm',
   'export beef', 'export lamb', 'china beef', 'japan beef',
   'grazing', 'producers', 'processor',
+  'grain', 'crop', 'harvest', 'rural', 'stock', 'market',
+  'price', 'export', 'trade', 'supply', 'demand',
+]
+
+/** Trusted sources — pass all articles through regardless of keywords */
+const TRUSTED_SOURCES = [
+  'Beef Central', 'Sheep Central', 'MLA News', 'Stock Journal',
+  'The Land', 'Farm Online', 'ABC Rural', 'Grain Central',
 ]
 
 /**
@@ -160,6 +167,8 @@ async function sha256(text: string): Promise<string> {
 
 /** Check if a raw article title/description is potentially relevant */
 function isLikelyRelevant(article: RawArticle): boolean {
+  // Always pass articles from our curated trusted sources
+  if (TRUSTED_SOURCES.includes(article.source)) return true
   const text = `${article.title} ${article.description}`.toLowerCase()
   return RELEVANCE_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()))
 }
@@ -236,12 +245,12 @@ async function fetchNewsAPI(apiKey: string): Promise<RawArticle[]> {
 }
 
 /**
- * Analyse a single article with Gemini 1.5 Flash (free tier).
- * Uses responseMimeType:"application/json" so the model is constrained
- * to return valid JSON — no parsing gymnastics needed.
+ * Analyse a single article with Groq (Llama 3.3-70B) — free tier.
+ * Uses response_format: json_object for guaranteed valid JSON output.
+ * Groq free tier: 14,400 req/day, ~30 req/min. No credit card needed.
  */
 async function analyseArticle(
-  model: any, // Gemini GenerativeModel instance
+  groqApiKey: string,
   article: RawArticle,
   baseConfidence: number,
 ): Promise<AnalysedArticle | null> {
@@ -255,18 +264,42 @@ Content:
 ${(article.description + '\n' + (article.content ?? '')).slice(0, 3000)}`
 
   try {
-    const result = await model.generateContent(userContent)
-    const raw = result.response.text()
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userContent },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Groq API error ${res.status}: ${err}`)
+    }
+
+    const data = await res.json()
+    const raw = data.choices?.[0]?.message?.content ?? ''
     const parsed = JSON.parse(raw) as AnalysedArticle
 
-    // Blend Gemini's confidence score with known source reliability
+    // Blend AI confidence score with known source reliability
     parsed.confidence_score = Math.round(
       parsed.confidence_score * 0.7 + baseConfidence * 0.3,
     )
 
     return parsed
   } catch (err) {
-    console.error(`Gemini analysis failed for "${article.title}":`, err)
+    console.error(`Groq analysis failed for "${article.title}":`, err)
     return null
   }
 }
@@ -289,21 +322,12 @@ Deno.serve(async (req) => {
   // Initialise clients
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    Deno.env.get('SB_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   )
 
-  // Gemini Flash — free tier (1,500 req/day)
-  // Get your key at: https://aistudio.google.com/app/apikey
-  const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY') ?? '')
-  const geminiModel = genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    systemInstruction: SYSTEM_PROMPT,
-    generationConfig: {
-      responseMimeType: 'application/json', // forces valid JSON output
-      temperature: 0.2,                     // low = consistent structured output
-      maxOutputTokens: 1024,
-    },
-  })
+  // Groq (Llama 3.3-70B) — free tier (14,400 req/day)
+  // Get your key at: https://console.groq.com (sign up with GitHub)
+  const groqApiKey = Deno.env.get('GROQ_API_KEY') ?? ''
 
   const newsApiKey = Deno.env.get('NEWS_API_KEY') ?? ''
 
@@ -376,15 +400,19 @@ Deno.serve(async (req) => {
 
     // ── 3. Pre-filter for likely relevance (save Gemini API calls) ──────────
 
-    const relevant = newCandidates.filter(isLikelyRelevant)
-    console.log(`${relevant.length} articles passed relevance pre-filter`)
+    // Log first 3 candidates to debug source names
+    newCandidates.slice(0, 3).forEach((c) =>
+      console.log(`Sample candidate: source="${c.source}" title="${c.title?.slice(0, 60)}"`)
+    )
+    const relevant = newCandidates.filter(isLikelyRelevant).slice(0, 15)
+    console.log(`${relevant.length} articles passed relevance pre-filter (capped at 15/run)`)
 
     // ── 4. Analyse each new article with Gemini Flash (free) ─────────────
 
     const toInsert: any[] = []
 
     for (const article of relevant) {
-      const analysis = await analyseArticle(geminiModel, article, article.baseConfidence)
+      const analysis = await analyseArticle(groqApiKey, article, article.baseConfidence)
 
       if (!analysis || !analysis.is_relevant) {
         console.log(`Discarded: "${article.title.slice(0, 60)}"`)
@@ -414,8 +442,8 @@ Deno.serve(async (req) => {
 
       stats.articles_analysed++
 
-      // Gemini free tier: 15 requests/min → wait 4s between calls to stay safe
-      await new Promise((r) => setTimeout(r, 4_000))
+      // Groq free tier: ~30 req/min → wait 2s between calls to stay safe
+      await new Promise((r) => setTimeout(r, 2_000))
     }
 
     // ── 5. Bulk insert analysed articles ─────────────────────────────────

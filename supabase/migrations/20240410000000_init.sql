@@ -4,7 +4,6 @@
 -- ============================================================
 
 -- Enable required extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_cron";
 CREATE EXTENSION IF NOT EXISTS "pg_net";
 
@@ -14,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "pg_net";
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.articles (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   -- Deduplication key: SHA-256 hash of the source URL
   external_id     TEXT UNIQUE NOT NULL,
   headline        TEXT NOT NULL,
@@ -75,7 +74,7 @@ CREATE TRIGGER articles_updated_at
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS public.agent_runs (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at    TIMESTAMPTZ,
   status          TEXT NOT NULL DEFAULT 'running'
@@ -125,20 +124,9 @@ SELECT cron.schedule(
   '0 * * * *',  -- top of every hour
   $$
   SELECT net.http_post(
-    url     := current_setting('app.supabase_url') || '/functions/v1/news-agent',
-    headers := jsonb_build_object(
-      'Content-Type',  'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.service_role_key')
-    ),
+    url     := 'https://tdbdxnujalgsccadkmiq.supabase.co/functions/v1/news-agent',
+    headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkYmR4bnVqYWxnc2NjYWRrbWlxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjA2Njg1NSwiZXhwIjoyMDkxNjQyODU1fQ.lCj_Z7FDh7j4LNHIDBzBJ4PQrsFqFDq_3V_NCuAwM3o"}'::jsonb,
     body    := '{"trigger":"cron"}'::jsonb
   ) AS request_id;
   $$
 );
-
--- ============================================================
--- Seed: set the app settings so cron can find the project URL
--- Replace these with your real Supabase project values
--- ============================================================
--- ALTER DATABASE postgres SET app.supabase_url = 'https://YOUR_PROJECT_REF.supabase.co';
--- ALTER DATABASE postgres SET app.service_role_key = 'YOUR_SERVICE_ROLE_KEY';
--- (Uncomment and run after linking your project)
