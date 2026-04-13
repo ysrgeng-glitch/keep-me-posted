@@ -13,6 +13,7 @@ function AppInner() {
 
   const {
     articles,
+    allArticles,
     highImpactArticles,
     loading,
     refresh,
@@ -46,6 +47,7 @@ function AppInner() {
           path="/"
           element={
             <Dashboard
+              allArticles={allArticles}
               highImpactArticles={highImpactArticles}
               stats={stats}
               loading={loading}
