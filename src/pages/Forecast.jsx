@@ -1,11 +1,17 @@
 import ForecastChart from '../components/forecast/ForecastChart'
 import SentimentChart from '../components/forecast/SentimentChart'
 import MarketSignals from '../components/forecast/MarketSignals'
-import { mockForecastData, mockMarketSignals } from '../data/mockData'
+import { useForecastData } from '../hooks/useForecastData'
+import { mockForecastData } from '../data/mockData'
 
 export default function Forecast() {
-  const { beefPriceForecast, lambPriceForecast, sentimentTimeline, categoryBreakdown } = mockForecastData
+  const { signals, loading, updatedAt, beefForecast, lambForecast } = useForecastData()
+  const { sentimentTimeline, categoryBreakdown } = mockForecastData
   const maxCount = Math.max(...categoryBreakdown.map((d) => d.count))
+
+  const updatedStr = updatedAt
+    ? updatedAt.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+    : null
 
   return (
     <div>
@@ -20,28 +26,28 @@ export default function Forecast() {
       <div className="section-header">
         <div className="section-title">Live Market Indicators</div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
-          Updated: {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })} — indicative only
+          {loading ? 'Loading…' : updatedStr ? `Updated ${updatedStr} — source: MLA` : 'MLA weekly indicators'}
         </span>
       </div>
-      <MarketSignals signals={mockMarketSignals} />
+      <MarketSignals signals={signals} />
 
       {/* Price forecasts */}
       <div className="section-header" style={{ marginBottom: 14 }}>
-        <div className="section-title">Price Forecasts (AUD $/kg cwt)</div>
+        <div className="section-title">Price Forecasts (AUD $/kg — MLA indicators)</div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
           Dashed line = AI model projection · Shaded band = confidence range
         </span>
       </div>
       <div className="forecast-grid">
         <div className="chart-card">
-          <div className="chart-card-title">Beef — Eastern Young Cattle Indicator</div>
-          <div className="chart-card-subtitle">EYCI — AUD $/kg cwt — Actual &amp; 5-month forecast</div>
-          <ForecastChart data={beefPriceForecast} color="#2d8653" />
+          <div className="chart-card-title">Beef — Feeder Steer Indicator</div>
+          <div className="chart-card-subtitle">Feeder Steer — AUD $/kg liveweight — Actual &amp; 5-month projection</div>
+          <ForecastChart data={beefForecast} color="#2d8653" />
         </div>
         <div className="chart-card">
-          <div className="chart-card-title">Lamb — National Trade Indicator</div>
-          <div className="chart-card-subtitle">NTI — AUD $/kg cwt — Actual &amp; 5-month forecast</div>
-          <ForecastChart data={lambPriceForecast} color="#c9a227" />
+          <div className="chart-card-title">Lamb — Light Lamb Indicator</div>
+          <div className="chart-card-subtitle">Light Lamb — AUD $/kg carcase weight — Actual &amp; 5-month projection</div>
+          <ForecastChart data={lambForecast} color="#c9a227" />
         </div>
       </div>
 

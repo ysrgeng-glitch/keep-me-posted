@@ -72,6 +72,7 @@ export default async function handler(req, res) {
     audusd:   null,
     lamb:     null,
     beef:     null,
+    mutton:   null,
     source:   'fallback',
     sourceUrl: null,
     updatedAt: new Date().toISOString(),
@@ -132,9 +133,18 @@ export default async function handler(req, res) {
             source: 'MLA',
           }
         }
+        if (parsed.mutton) {
+          result.mutton = {
+            value:  parsed.mutton,
+            label:  `$${(parsed.mutton / 100).toFixed(2)}/kg`,
+            unit:   'cwt',
+            name:   'Mutton Indicator',
+            source: 'MLA',
+          }
+        }
         result.source    = 'mla'
         result.sourceUrl = url
-        console.log(`market-prices: parsed from ${url} — lamb=${parsed.lamb} beef=${parsed.beef}`)
+        console.log(`market-prices: parsed from ${url} — lamb=${parsed.lamb} beef=${parsed.beef} mutton=${parsed.mutton}`)
         break
       }
     } catch (e) {
@@ -160,6 +170,16 @@ export default async function handler(req, res) {
       label:  '$4.56/kg',
       unit:   'lw',
       name:   'Feeder Steer',
+      source: 'MLA (last known)',
+      isFallback: true,
+    }
+  }
+  if (!result.mutton) {
+    result.mutton = {
+      value:  814,
+      label:  '$8.14/kg',
+      unit:   'cwt',
+      name:   'Mutton Indicator',
       source: 'MLA (last known)',
       isFallback: true,
     }
