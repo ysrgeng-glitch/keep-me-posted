@@ -7,6 +7,7 @@ import FinancialImpact from '../components/common/FinancialImpact'
 import KPICards from '../components/dashboard/KPICards'
 import { formatRelativeTime, formatDate, getSentimentDescriptor } from '../utils/scoring'
 import { useMarketPrices } from '../hooks/useMarketPrices'
+import { supabase } from '../lib/supabase'
 
 const KNOWN_TRUSTED_SOURCES = new Set([
   'Beef Central', 'Sheep Central', 'MLA News', 'Stock Journal', 'The Land',
@@ -125,19 +126,34 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
     setPlaying(false); setPaused(false); setProgress(0); setElapsed(0)
   }, [])
 
-  // ── Regenerate briefing from the Edge Function ────────────────────────────
+  // ── Regenerate briefing by triggering the news-agent ─────────────────────
+  // The news-agent (already deployed + working) now includes briefing generation.
+  // Calling it here forces a fresh run which will also regenerate today's briefing.
   const regenerate = useCallback(async () => {
     if (regenerating) return
     stop()
     setRegenerating(true)
     setRegenStatus(null)
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-      const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY
-      if (!supabaseUrl || !anonKey) throw new Error('Supabase not configured')
 
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !anonKey) {
+      setRegenStatus('error')
+      setRegenerating(false)
+      return
+    }
+
+    // First: delete today's short briefing so the news-agent will regenerate it
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      await supabase?.from('daily_briefings').delete().eq('briefing_date', today)
+    } catch (_) { /* best-effort */ }
+
+    // Then: trigger the news-agent — it runs article ingestion + briefing generation
+    try {
       const res = await fetch(
-        `${supabaseUrl}/functions/v1/daily-briefing?force=true`,
+        `${supabaseUrl}/functions/v1/news-agent`,
         {
           method:  'POST',
           headers: {
@@ -146,7 +162,7 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
             'Content-Type':  'application/json',
           },
           body:   JSON.stringify({}),
-          signal: AbortSignal.timeout(120_000), // 2-min timeout — Groq can be slow
+          signal: AbortSignal.timeout(180_000), // 3-min timeout (news + briefing generation)
         }
       )
       const data = await res.json().catch(() => ({}))
@@ -154,11 +170,11 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
         setRegenStatus('ok')
         await refreshBriefing?.()
       } else {
-        console.warn('Regenerate returned error:', data)
+        console.warn('news-agent returned:', data)
         setRegenStatus('error')
       }
     } catch (err) {
-      console.error('Regenerate briefing failed:', err)
+      console.error('Regenerate via news-agent failed:', err)
       setRegenStatus('error')
     } finally {
       setRegenerating(false)
@@ -207,7 +223,7 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
       )}
       {regenStatus === 'error' && (
         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 'var(--radius-sm)', padding: '6px 14px', marginBottom: 8, fontSize: '0.8125rem', color: '#991b1b' }}>
-          ✗ Could not regenerate. Make sure the Edge Function is deployed: <code style={{ fontSize: '0.75rem' }}>supabase functions deploy daily-briefing</code>
+          ✗ Could not regenerate — the news-agent may still be starting up. Wait 30 seconds and try again. If the issue persists, run: <code style={{ fontSize: '0.75rem' }}>supabase functions deploy news-agent</code>
         </div>
       )}
 

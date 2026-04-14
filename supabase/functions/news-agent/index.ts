@@ -338,6 +338,215 @@ ${(article.description + '\n' + (article.content ?? '')).slice(0, 3500)}`
   }
 }
 
+// ── Daily briefing generator (runs at end of every news-agent run) ─────────────
+//
+// Generates today's podcast briefing script if:
+//   - No briefing exists for today, OR
+//   - The existing briefing is < 200 words (was a fallback/truncated)
+//
+// Uses the same Groq key that already works for article analysis.
+
+const BRIEFING_SYSTEM_PROMPT = `You are a professional broadcast journalist and senior commodity market analyst presenting the daily morning intelligence briefing for Grasshopper News — a platform used by JBS Southern Australia senior leadership.
+
+CRITICAL WRITING RULES:
+- Write in clear, confident spoken English — as if speaking directly into a microphone at 6 AM
+- NO bullet points, NO asterisks, NO pound signs, NO markdown of any kind
+- Full flowing sentences throughout — no abbreviations that would sound odd when spoken aloud
+- Every number must be spoken as words: "two point three million dollars" not "$2.3M", "ninety-four US cents" not "0.94"
+- Section transitions must be spoken naturally: "Moving to our market intelligence section." not "## SECTION 2"
+- NEVER invent facts not present in the provided articles
+- You MUST use ALL provided articles — weave every story into the appropriate section
+- TARGET LENGTH: You MUST write at least 900 words. DO NOT stop before 900 words. Count your words. If you reach the Outro before 900 words, go back and expand each section with more analysis and context.
+
+STRUCTURE (follow exactly):
+
+INTRO (60–80 words)
+"Good morning. It is [WEEKDAY], [DATE]. I am your Grasshopper News intelligence analyst."
+One sentence on market mood and how many significant developments are covered.
+
+SECTION ONE — CRITICAL ALERTS (150–200 words)
+Cover every HIGH impact article. For each: what happened, which state is affected, and what action JBS should consider today.
+
+SECTION TWO — MARKET INTELLIGENCE (200–250 words)
+Cover market conditions from the articles: any price movements, currency, volumes, demand signals. If specific prices appear in the articles, state them. Interpret what current conditions mean for JBS margins.
+
+SECTION THREE — GLOBAL SIGNALS (150 words)
+International stories: trade tensions, disease outbreaks, shipping disruptions, competitor supply changes, currency movements. Assess impact on Australian beef and lamb export competitiveness.
+
+SECTION FOUR — DOMESTIC INDUSTRY NEWS (200 words)
+Cover MEDIUM and LOW impact Australian stories: processing, supply chain, weather, regulation, labour, MLA announcements, retail demand.
+
+SECTION FIVE — STRATEGIC OUTLOOK (150 words)
+Single biggest risk for JBS this week. Single biggest opportunity. Two or three specific recommended actions referencing stories from the briefing.
+
+OUTRO (40–60 words)
+"That concludes your Grasshopper News briefing for [DATE]. Next update tomorrow morning. Stay informed, stay ahead."`
+
+async function generateDailyBriefingIfNeeded(supabase: any, groqApiKey: string): Promise<void> {
+  const today     = new Date().toISOString().split('T')[0]
+  const dateLabel = new Date().toLocaleDateString('en-AU', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
+
+  // ── Check if a good briefing already exists today ─────────────────────────
+  try {
+    const { data: existing } = await supabase
+      .from('daily_briefings')
+      .select('id, briefing_text')
+      .eq('briefing_date', today)
+      .maybeSingle()
+
+    if (existing) {
+      const wordCount = (existing.briefing_text ?? '').split(/\s+/).filter(Boolean).length
+      if (wordCount >= 200) {
+        console.log(`[briefing] Already have ${wordCount}-word briefing for ${today} — skipping`)
+        return
+      }
+      // Exists but too short (fallback text) — delete and regenerate
+      console.log(`[briefing] Existing briefing too short (${wordCount} words) — regenerating`)
+      await supabase.from('daily_briefings').delete().eq('briefing_date', today)
+    }
+  } catch (err) {
+    console.warn('[briefing] Could not check existing briefing:', err)
+  }
+
+  if (!groqApiKey) {
+    console.warn('[briefing] GROQ_API_KEY not set — skipping briefing generation')
+    return
+  }
+
+  // ── Fetch recent articles ─────────────────────────────────────────────────
+  const cutoff36h = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
+  const { data: rawArticles } = await supabase
+    .from('articles')
+    .select(`
+      id, headline, summary, why_it_matters, category, impact, regions,
+      source, published_at, short_term_impact, medium_term_impact,
+      strategic_recommendation, financial_impact_label,
+      financial_impact_low_aud, financial_impact_high_aud, sentiment, time_horizon
+    `)
+    .gte('created_at', cutoff36h)
+    .order('published_at', { ascending: false })
+    .limit(25)
+
+  const IMPACT_ORD: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
+  const articles = (rawArticles ?? []).sort((a: any, b: any) => {
+    const d = (IMPACT_ORD[a.impact] ?? 2) - (IMPACT_ORD[b.impact] ?? 2)
+    return d !== 0 ? d : new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+  })
+
+  if (articles.length === 0) {
+    console.log('[briefing] No articles in last 36h — storing placeholder')
+    await supabase.from('daily_briefings').upsert({
+      briefing_date: today,
+      briefing_text: `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. No new intelligence has been recorded in the last thirty-six hours. The platform continues to monitor all major Australian and international feeds around the clock. Full intelligence will be available once new articles are ingested. That concludes today's placeholder update. Stay informed, stay ahead.`,
+      article_ids:   [],
+      article_count: 0,
+      change_count:  0,
+    }, { onConflict: 'briefing_date' })
+    return
+  }
+
+  // ── Format articles for the AI ────────────────────────────────────────────
+  function fmtArticle(a: any, i: number): string {
+    const fin = a.financial_impact_label
+      ?? (a.financial_impact_high_aud ? `Up to AUD ${(a.financial_impact_high_aud / 1_000_000).toFixed(1)} million` : 'Not quantified')
+    return [
+      `[ARTICLE ${i}] ${a.impact} IMPACT | ${a.category} | Regions: ${(a.regions ?? []).join(', ')} | Source: ${a.source}`,
+      `Headline: ${a.headline}`,
+      `Financial impact: ${fin}`,
+      `Summary: ${a.summary}`,
+      `Why it matters: ${a.why_it_matters ?? 'N/A'}`,
+      `Short-term: ${a.short_term_impact ?? 'N/A'}`,
+      `Recommendation: ${a.strategic_recommendation ?? 'N/A'}`,
+    ].join('\n')
+  }
+
+  const highCount   = articles.filter((a: any) => a.impact === 'HIGH').length
+  const mediumCount = articles.filter((a: any) => a.impact === 'MEDIUM').length
+  const lowCount    = articles.filter((a: any) => a.impact === 'LOW').length
+
+  const userPrompt = [
+    `DATE: ${dateLabel}`,
+    `TOTAL ARTICLES: ${articles.length} (${highCount} HIGH, ${mediumCount} MEDIUM, ${lowCount} LOW)`,
+    `YOU MUST USE ALL ${articles.length} ARTICLES. DO NOT STOP BEFORE 900 WORDS.`,
+    ``,
+    articles.map((a: any, i: number) => fmtArticle(a, i + 1)).join('\n\n---\n\n'),
+  ].join('\n')
+
+  // ── Call Groq ─────────────────────────────────────────────────────────────
+  let briefingText: string | null = null
+  try {
+    console.log(`[briefing] Calling Groq for ${articles.length}-article briefing (${dateLabel})…`)
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:       'llama-3.3-70b-versatile',
+        temperature: 0.4,
+        max_tokens:  2500,
+        messages: [
+          { role: 'system', content: BRIEFING_SYSTEM_PROMPT },
+          { role: 'user',   content: userPrompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(90_000),
+    })
+
+    if (groqRes.ok) {
+      const groqData  = await groqRes.json()
+      const generated = groqData.choices?.[0]?.message?.content ?? ''
+      const wc        = generated.split(/\s+/).filter(Boolean).length
+      console.log(`[briefing] Groq returned ${wc} words`)
+      if (wc >= 150) {
+        briefingText = generated
+      } else {
+        console.warn(`[briefing] Groq response too short (${wc} words) — discarding`)
+      }
+    } else {
+      const errTxt = await groqRes.text()
+      console.warn(`[briefing] Groq API error ${groqRes.status}: ${errTxt}`)
+    }
+  } catch (err) {
+    console.error('[briefing] Groq call failed:', err)
+  }
+
+  // ── Fallback if Groq fails ────────────────────────────────────────────────
+  if (!briefingText) {
+    // Build a structured plain-English summary without AI
+    const highItems = articles.filter((a: any) => a.impact === 'HIGH')
+    const midItems  = articles.filter((a: any) => a.impact === 'MEDIUM')
+    const alerts    = highItems.map((a: any) => `${a.headline}. ${a.why_it_matters ?? ''}`).join(' ')
+    const market    = midItems.slice(0, 3).map((a: any) => a.headline).join('. ')
+    briefingText = `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. ` +
+      `Today's briefing covers ${articles.length} developments. ` +
+      (highItems.length > 0 ? `Critical alerts: ${alerts} ` : '') +
+      (midItems.length  > 0 ? `Market developments: ${market}. ` : '') +
+      `That concludes today's Grasshopper News briefing. Stay informed, stay ahead.`
+    console.log('[briefing] Using structured fallback (Groq unavailable)')
+  }
+
+  // ── Store briefing ────────────────────────────────────────────────────────
+  const wordCount = briefingText.split(/\s+/).filter(Boolean).length
+  try {
+    const { error } = await supabase.from('daily_briefings').upsert({
+      briefing_date: today,
+      briefing_text: briefingText,
+      article_ids:   articles.map((a: any) => a.id),
+      article_count: articles.length,
+      change_count:  articles.length,
+    }, { onConflict: 'briefing_date' })
+
+    if (error) {
+      console.error('[briefing] DB upsert failed:', error.message)
+    } else {
+      console.log(`[briefing] Stored ${wordCount}-word briefing for ${today}`)
+    }
+  } catch (err) {
+    console.error('[briefing] Store failed:', err)
+  }
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -496,7 +705,17 @@ Deno.serve(async (req) => {
       console.log(`Inserted ${toInsert.length} articles`)
     }
 
-    // ── 6. Update run log ─────────────────────────────────────────────────────
+    // ── 6. Generate daily briefing if needed ─────────────────────────────────
+    // Runs after every article ingestion — auto-creates or refreshes today's
+    // podcast script if it's missing or was a short fallback (<200 words).
+    try {
+      await generateDailyBriefingIfNeeded(supabase, groqApiKey)
+    } catch (briefingErr) {
+      // Non-fatal — log and continue
+      console.warn('[briefing] generateDailyBriefingIfNeeded threw:', briefingErr)
+    }
+
+    // ── 7. Update run log ─────────────────────────────────────────────────────
     await supabase.from('agent_runs').update({
       status: 'completed',
       completed_at: new Date().toISOString(),
