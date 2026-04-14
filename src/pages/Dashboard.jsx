@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import ImpactBadge from '../components/common/ImpactBadge'
 import RegionTag from '../components/common/RegionTag'
 import VerificationBadge from '../components/common/VerificationBadge'
-import FinancialImpact from '../components/common/FinancialImpact'
 import KPICards from '../components/dashboard/KPICards'
 import { formatRelativeTime } from '../utils/scoring'
 import { useMarketPrices } from '../hooks/useMarketPrices'
@@ -654,13 +653,6 @@ function LatestIntelligenceFeed({ articles }) {
               <div className="high-impact-body">
                 <div className="high-impact-headline">{article.headline}</div>
 
-                {/* Financial impact on its own line when available */}
-                {article.financialImpactLabel && (
-                  <div className="high-impact-financial">
-                    <FinancialImpact label={article.financialImpactLabel} compact />
-                  </div>
-                )}
-
                 <div className="high-impact-foot">
                   <ImpactBadge level={article.impact} />
                   <VerificationBadge status={resolveVerification(article.verificationStatus, article.source)} compact />
@@ -817,7 +809,7 @@ function LivePricesRow() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch' }}>
         <PriceCell
           emoji="🐑"
-          label="SA Lamb"
+          label="Lamb"
           value={prices.lamb?.label}
           direction={prices.lamb?.direction}
           sub={prices.lamb?.saleyard ?? 'Saleyard indicator'}

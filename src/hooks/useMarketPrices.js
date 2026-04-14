@@ -1,11 +1,33 @@
 // ====================================================
 // Grasshopper News — useMarketPrices Hook
-// Fetches live AUD/USD directly from the browser (CORS-ok)
-// and reads commodity prices from Supabase market_prices table.
+// Fetches live prices from /api/market-prices (Vercel function):
+//   - AUD/USD via open.er-api.com
+//   - Lamb & Beef via MLA weekly market wrap (scraped server-side)
+//   Falls back to last-known MLA values when the function is unavailable
+//   (e.g. local dev without Vercel CLI).
 // ====================================================
 
 import { useState, useEffect } from 'react'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+
+// Last verified values from MLA weekly wrap — April 10, 2026
+const STATIC_FALLBACK = {
+  lamb: {
+    value: 1193,
+    label: '1193¢/kg',
+    unit: 'cwt',
+    saleyard: 'Light Lamb Indicator (MLA)',
+    direction: null,
+  },
+  beef: {
+    value: 456,
+    label: '456¢/kg',
+    unit: 'lw',
+    saleyard: 'Feeder Steer Indicator (MLA)',
+    direction: null,
+  },
+  eyci: null,
+  audusd: null,
+}
 
 export function useMarketPrices() {
   const [prices, setPrices]   = useState({ audusd: null, lamb: null, beef: null, eyci: null })
@@ -14,102 +36,84 @@ export function useMarketPrices() {
 
   useEffect(() => {
     fetchAll()
-    // Refresh every 30 minutes
-    const interval = setInterval(fetchAll, 30 * 60 * 1000)
+    // Refresh every hour
+    const interval = setInterval(fetchAll, 60 * 60 * 1000)
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchAll() {
     setLoading(true)
-    const result = { audusd: null, lamb: null, beef: null, eyci: null }
 
-    // ── 1. AUD/USD — fetch directly from browser ──────────────────────────────
     try {
-      const res = await fetch('https://open.er-api.com/v6/latest/USD', {
-        signal: AbortSignal.timeout(8_000),
+      const res = await fetch('/api/market-prices', {
+        signal: AbortSignal.timeout(15_000),
       })
+
       if (res.ok) {
         const data = await res.json()
-        const audRate = data?.rates?.AUD
-        if (audRate) {
-          result.audusd = {
-            value: Number((1 / audRate).toFixed(4)),
-            direction: null, // can't determine direction without history on client
-            label: `${(1 / audRate).toFixed(4)}`,
-          }
-        }
+
+        setPrices({
+          audusd: data.audusd
+            ? {
+                value:     data.audusd.value,
+                label:     String(data.audusd.label),
+                direction: data.audusd.direction ?? null,
+              }
+            : null,
+
+          lamb: data.lamb
+            ? {
+                value:     data.lamb.value,
+                label:     data.lamb.label,
+                direction: null,
+                saleyard:  `${data.lamb.name} (${data.lamb.unit === 'cwt' ? 'carcase wt' : 'live wt'})`,
+              }
+            : STATIC_FALLBACK.lamb,
+
+          beef: data.beef
+            ? {
+                value:     data.beef.value,
+                label:     data.beef.label,
+                direction: null,
+                saleyard:  `${data.beef.name} (${data.beef.unit === 'cwt' ? 'carcase wt' : 'live wt'})`,
+              }
+            : STATIC_FALLBACK.beef,
+
+          eyci: null,
+        })
+
+        setUpdatedAt(new Date())
+        setLoading(false)
+        return
       }
     } catch (err) {
-      console.warn('AUD/USD fetch failed:', err)
+      // /api/market-prices unavailable (local dev) — use fallback below
+      console.warn('market-prices API unavailable:', err?.message)
     }
 
-    // ── 2. Commodity prices from Supabase market_prices table ─────────────────
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data } = await supabase
-          .from('market_prices')
-          .select('commodity, price_per_kg_aud, exchange_rate, saleyard, direction, fetched_at')
-          .in('commodity', ['lamb', 'beef', 'eyci', 'currency'])
-          .order('fetched_at', { ascending: false })
-          .limit(20)
+    // ── Fallback: static last-known MLA values + live AUD/USD ────────────────
+    const fallback = { ...STATIC_FALLBACK }
 
-        if (data && data.length > 0) {
-          // Take the most recent record for each commodity
-          const byType = {}
-          for (const row of data) {
-            if (!byType[row.commodity]) byType[row.commodity] = row
-          }
-
-          if (byType.lamb) {
-            result.lamb = {
-              value: byType.lamb.price_per_kg_aud,
-              direction: byType.lamb.direction,
-              saleyard: byType.lamb.saleyard,
-              label: byType.lamb.price_per_kg_aud
-                ? `$${Number(byType.lamb.price_per_kg_aud).toFixed(2)}/kg`
-                : null,
-            }
-          }
-
-          if (byType.beef || byType.eyci) {
-            const row = byType.beef ?? byType.eyci
-            result.beef = {
-              value: row.price_per_kg_aud,
-              direction: row.direction,
-              saleyard: row.saleyard,
-              label: row.price_per_kg_aud
-                ? `$${Number(row.price_per_kg_aud).toFixed(2)}/kg cwt`
-                : null,
-            }
-          }
-
-          if (byType.eyci) {
-            result.eyci = {
-              value: byType.eyci.price_per_kg_aud,
-              direction: byType.eyci.direction,
-              saleyard: byType.eyci.saleyard,
-              label: byType.eyci.price_per_kg_aud
-                ? `$${Number(byType.eyci.price_per_kg_aud).toFixed(2)}/kg`
-                : null,
-            }
-          }
-
-          // If currency is also stored, prefer DB direction info
-          if (byType.currency && byType.currency.exchange_rate) {
-            result.audusd = {
-              value: byType.currency.exchange_rate,
-              direction: byType.currency.direction,
-              label: `${Number(byType.currency.exchange_rate).toFixed(4)}`,
-            }
+    try {
+      const r = await fetch('https://open.er-api.com/v6/latest/USD', {
+        signal: AbortSignal.timeout(8_000),
+      })
+      if (r.ok) {
+        const d = await r.json()
+        if (d?.rates?.AUD) {
+          const rate = 1 / d.rates.AUD
+          fallback.audusd = {
+            value:     parseFloat(rate.toFixed(4)),
+            label:     rate.toFixed(4),
+            direction: null,
           }
         }
-      } catch (err) {
-        // Silently fail — table may not exist yet
-        console.warn('market_prices table read failed (may not exist yet):', err?.message)
       }
+    } catch (e) {
+      console.warn('AUD/USD fallback fetch failed:', e?.message)
     }
 
-    setPrices(result)
+    setPrices(fallback)
     setUpdatedAt(new Date())
     setLoading(false)
   }
