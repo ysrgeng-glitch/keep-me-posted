@@ -5,9 +5,8 @@ import RegionTag from '../components/common/RegionTag'
 import VerificationBadge from '../components/common/VerificationBadge'
 import FinancialImpact from '../components/common/FinancialImpact'
 import KPICards from '../components/dashboard/KPICards'
-import { formatRelativeTime, formatDate, getSentimentDescriptor } from '../utils/scoring'
+import { formatRelativeTime } from '../utils/scoring'
 import { useMarketPrices } from '../hooks/useMarketPrices'
-import { supabase } from '../lib/supabase'
 
 const KNOWN_TRUSTED_SOURCES = new Set([
   'Beef Central', 'Sheep Central', 'MLA News', 'Stock Journal', 'The Land',
@@ -27,9 +26,122 @@ function resolveVerification(status, source) {
   return status
 }
 
+// ── Client-side briefing script generator ────────────────────────────────────
+// Generates a full spoken briefing from articles loaded in the browser.
+// Used when the stored briefing is too short or missing — requires no API key,
+// no deployment, and no external service of any kind.
+
+function generateLocalScript(articles, dateLabel) {
+  if (!articles || articles.length === 0) return ''
+  const high   = articles.filter(a => a.impact === 'HIGH')
+  const medium = articles.filter(a => a.impact === 'MEDIUM')
+  const low    = articles.filter(a => a.impact === 'LOW')
+  const parts  = []
+
+  // INTRO
+  parts.push(
+    `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. ` +
+    `Here is your complete intelligence briefing for the Australian Beef and Lamb industry. ` +
+    `We are tracking ${articles.length} intelligence items today — ` +
+    `${high.length} critical alert${high.length !== 1 ? 's' : ''}, ` +
+    `${medium.length} medium-impact development${medium.length !== 1 ? 's' : ''}, ` +
+    `and ${low.length} lower-priority item${low.length !== 1 ? 's' : ''}.`
+  )
+
+  // SECTION ONE — CRITICAL ALERTS
+  if (high.length > 0) {
+    parts.push(
+      `Moving to our critical alerts section. ` +
+      `We have ${high.length} high-impact development${high.length !== 1 ? 's' : ''} requiring your immediate attention.`
+    )
+    for (const a of high) {
+      const reg = (a.regions ?? []).filter(r => r !== 'National').join(' and ') || 'national operations'
+      const fin = a.financialImpactLabel ? ` Financial exposure is estimated at ${a.financialImpactLabel}.` : ''
+      const why = a.whyItMatters ? ` ${a.whyItMatters}` : (a.summary ? ` ${a.summary}` : '')
+      const rec = a.strategicRecommendation ? ` Our recommendation: ${a.strategicRecommendation}.` : ''
+      const stm = a.shortTermImpact ? ` In the short term: ${a.shortTermImpact}.` : ''
+      parts.push(`${a.headline}. This affects ${reg}.${why}${stm}${fin}${rec}`)
+    }
+  } else {
+    parts.push(`There are no critical high-impact alerts at this time. Moving to market intelligence.`)
+  }
+
+  // SECTION TWO — MARKET INTELLIGENCE
+  parts.push(`Moving to our market intelligence section.`)
+  const market = articles
+    .filter(a => ['Market & Economy', 'Export / Trade', 'Forecasts / Projections', 'Production Costs'].includes(a.category))
+    .slice(0, 5)
+  if (market.length > 0) {
+    for (const a of market) {
+      const why = a.whyItMatters ? ` ${a.whyItMatters}` : ''
+      const med = a.mediumTermImpact ? ` Looking further ahead: ${a.mediumTermImpact}.` : ''
+      parts.push(`${a.headline}.${why}${med}`)
+    }
+  } else {
+    parts.push(
+      `No specific market price data is available in today's intelligence feed. ` +
+      `Monitoring continues across all major Australian and international feeds.`
+    )
+  }
+
+  // SECTION THREE — GLOBAL SIGNALS
+  const global = articles
+    .filter(a => (a.regions ?? []).some(r => ['Global', 'USA', 'China', 'International', 'NZ', 'EU', 'Brazil'].includes(r)))
+    .slice(0, 4)
+  if (global.length > 0) {
+    parts.push(`Moving to global signals that affect Australian beef and lamb exports.`)
+    for (const a of global) {
+      const why = a.whyItMatters ? ` ${a.whyItMatters}` : ''
+      parts.push(`${a.headline}.${why}`)
+    }
+  } else {
+    parts.push(`No major international signals affecting Australian export markets are recorded in this briefing period.`)
+  }
+
+  // SECTION FOUR — DOMESTIC INDUSTRY
+  const domestic = [...medium, ...low]
+    .filter(a => !(a.regions ?? []).some(r => ['Global', 'USA', 'China', 'Brazil', 'EU'].includes(r)))
+    .slice(0, 6)
+  if (domestic.length > 0) {
+    parts.push(`Moving to domestic industry news.`)
+    for (const a of domestic) {
+      const why = a.whyItMatters ? ` ${a.whyItMatters}` : (a.summary ? ` ${a.summary}` : '')
+      const stm = a.shortTermImpact ? ` Short-term outlook: ${a.shortTermImpact}.` : ''
+      parts.push(`${a.headline}.${why}${stm}`)
+    }
+  }
+
+  // SECTION FIVE — STRATEGIC OUTLOOK
+  const topRisk = high[0] ?? medium[0]
+  const topOpp  = medium.find(a => (a.sentiment ?? 0) > 0) ?? medium[0]
+  parts.push(`Moving to our strategic outlook for the week.`)
+  if (topRisk) {
+    parts.push(
+      `The single biggest risk for JBS Southern Australia this week is related to ${topRisk.headline.toLowerCase()}. ` +
+      `${topRisk.strategicRecommendation ? topRisk.strategicRecommendation + '.' : ''}`
+    )
+  }
+  if (topOpp && topOpp !== topRisk) {
+    parts.push(
+      `The primary opportunity this week centres on ${topOpp.headline.toLowerCase()}. ` +
+      `${topOpp.strategicRecommendation ? topOpp.strategicRecommendation + '.' : ''}`
+    )
+  }
+  parts.push(
+    `The operations and commercial teams should review today's high-impact items immediately, ` +
+    `monitor procurement conditions given current market signals, ` +
+    `and ensure biosecurity and supply chain protocols are fully current.`
+  )
+
+  // OUTRO
+  parts.push(`That concludes your Grasshopper News briefing for ${dateLabel}. Next update tomorrow morning at six AM. Stay informed, stay ahead.`)
+
+  return parts.filter(Boolean).join(' ')
+}
+
 // ── Morning Intelligence Podcast Player ──────────────────────────────────────
 
-function PodcastPlayer({ briefing, refreshBriefing }) {
+function PodcastPlayer({ briefing, refreshBriefing, allArticles }) {
   const [playing,       setPlaying]       = useState(false)
   const [paused,        setPaused]        = useState(false)
   const [progress,      setProgress]      = useState(0)
@@ -41,24 +153,44 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
   const [supported]    = useState(() => typeof window !== 'undefined' && 'speechSynthesis' in window)
   const utteranceRef   = useRef(null)
   const timerRef       = useRef(null)
+  const resumeRef      = useRef(null)  // Chrome keepalive interval
   const startTimeRef   = useRef(0)
   const elapsedAtPause = useRef(0)
 
-  // Strip markdown for TTS
+  // Build the spoken script:
+  // 1. Use the stored briefing_text if it has enough content (≥ 50 words)
+  // 2. Otherwise generate the full script client-side from the loaded articles —
+  //    this requires no API key, no deployment, and works with both mock and live data
   const ttsText = useMemo(() => {
-    if (!briefing?.briefing_text) return ''
-    return briefing.briefing_text
+    const strip = (text) => text
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/^#{1,3}\s/gm, '')
       .replace(/•\s/g, '. ')
       .replace(/\n{2,}/g, ' ')
       .replace(/\n/g, ' ')
-  }, [briefing?.briefing_text])
+      .trim()
+
+    const stored = briefing?.briefing_text ? strip(briefing.briefing_text) : ''
+    const storedWords = stored.split(/\s+/).filter(Boolean).length
+
+    if (storedWords >= 50) return stored   // real briefing — use it
+
+    // Stored text is too short (placeholder / Groq error) — generate locally
+    const dateLabel = briefing?.briefing_date
+      ? new Date(briefing.briefing_date + 'T00:00:00').toLocaleDateString('en-AU', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        })
+      : new Date().toLocaleDateString('en-AU', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        })
+
+    return generateLocalScript(allArticles ?? [], dateLabel)
+  }, [briefing?.briefing_text, briefing?.briefing_date, allArticles])
 
   const wordCount        = useMemo(() => ttsText.split(/\s+/).filter(Boolean).length, [ttsText])
   const estimatedMinutes = useMemo(() => Math.max(1, Math.round(wordCount / 125)), [wordCount])
-  // Briefing is considered "short" (likely the fallback text) if under 200 words
-  const isShortBriefing  = wordCount < 200
+  // Briefing is considered "short" if the local script also has no content
+  const isShortBriefing  = wordCount < 50
 
   useEffect(() => { setTotalSecs(estimatedMinutes * 60) }, [estimatedMinutes])
 
@@ -66,6 +198,7 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
   useEffect(() => {
     window.speechSynthesis?.cancel()
     clearInterval(timerRef.current)
+    clearInterval(resumeRef.current)
     setPlaying(false); setPaused(false); setProgress(0); setElapsed(0)
     elapsedAtPause.current = 0
   }, [briefing?.id, briefing?.briefing_text])
@@ -74,6 +207,7 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
   useEffect(() => () => {
     window.speechSynthesis?.cancel()
     clearInterval(timerRef.current)
+    clearInterval(resumeRef.current)
   }, [])
 
   const startTimer = useCallback(() => {
@@ -87,48 +221,86 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
 
   const stopTimer = useCallback(() => { clearInterval(timerRef.current) }, [])
 
+  const startResumeKeepalive = useCallback(() => {
+    // Chrome stops speaking silently after ~15 s on long texts.
+    // Pausing + immediately resuming every 10 s keeps it alive.
+    clearInterval(resumeRef.current)
+    resumeRef.current = setInterval(() => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause()
+        window.speechSynthesis.resume()
+      }
+    }, 10_000)
+  }, [])
+
+  const stopResumeKeepalive = useCallback(() => {
+    clearInterval(resumeRef.current)
+  }, [])
+
   const play = useCallback(() => {
     if (!supported || !ttsText) return
     if (paused) {
       window.speechSynthesis.resume()
-      setPaused(false); setPlaying(true); startTimer()
+      setPaused(false); setPlaying(true); startTimer(); startResumeKeepalive()
       return
     }
     window.speechSynthesis.cancel()
     clearInterval(timerRef.current)
+    clearInterval(resumeRef.current)
     elapsedAtPause.current = 0
     setElapsed(0); setProgress(0)
 
-    const u = new SpeechSynthesisUtterance(ttsText)
-    u.rate  = 0.95
-    u.pitch = 1.0
-    u.lang  = 'en-AU'
+    const speak = (voices) => {
+      const u = new SpeechSynthesisUtterance(ttsText)
+      u.rate  = 0.95
+      u.pitch = 1.0
+      u.lang  = 'en-AU'
+      const auVoice = voices.find(v => v.lang === 'en-AU') || voices.find(v => v.lang.startsWith('en'))
+      if (auVoice) u.voice = auVoice
+      u.onend   = () => { setPlaying(false); setPaused(false); setProgress(100); stopTimer(); stopResumeKeepalive() }
+      u.onerror = () => { setPlaying(false); setPaused(false); stopTimer(); stopResumeKeepalive() }
+      utteranceRef.current = u
+      window.speechSynthesis.speak(u)
+      setPlaying(true); startTimer(); startResumeKeepalive()
+    }
+
+    // Chrome loads voices asynchronously — wait for them if not ready yet
     const voices = window.speechSynthesis.getVoices()
-    const auVoice = voices.find(v => v.lang === 'en-AU') || voices.find(v => v.lang.startsWith('en'))
-    if (auVoice) u.voice = auVoice
-    u.onend   = () => { setPlaying(false); setPaused(false); setProgress(100); stopTimer() }
-    u.onerror = () => { setPlaying(false); setPaused(false); stopTimer() }
-    utteranceRef.current = u
-    window.speechSynthesis.speak(u)
-    setPlaying(true); startTimer()
-  }, [supported, ttsText, paused, startTimer, stopTimer])
+    if (voices.length > 0) {
+      speak(voices)
+    } else {
+      window.speechSynthesis.addEventListener('voiceschanged', () => {
+        speak(window.speechSynthesis.getVoices())
+      }, { once: true })
+      // Trigger voice load and speak with default if event never fires (Firefox/Safari)
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking) speak(window.speechSynthesis.getVoices())
+      }, 200)
+    }
+  }, [supported, ttsText, paused, startTimer, stopTimer, startResumeKeepalive, stopResumeKeepalive])
 
   const pause = useCallback(() => {
     window.speechSynthesis.pause()
     elapsedAtPause.current = elapsed
-    stopTimer(); setPlaying(false); setPaused(true)
-  }, [elapsed, stopTimer])
+    stopTimer(); stopResumeKeepalive(); setPlaying(false); setPaused(true)
+  }, [elapsed, stopTimer, stopResumeKeepalive])
 
   const stop = useCallback(() => {
     window.speechSynthesis.cancel()
     clearInterval(timerRef.current)
+    clearInterval(resumeRef.current)
     elapsedAtPause.current = 0
     setPlaying(false); setPaused(false); setProgress(0); setElapsed(0)
   }, [])
 
-  // ── Regenerate briefing by triggering the news-agent ─────────────────────
-  // The news-agent (already deployed + working) now includes briefing generation.
-  // Calling it here forces a fresh run which will also regenerate today's briefing.
+  // ── Regenerate briefing via daily-briefing?force=true ────────────────────
+  // Calls the dedicated briefing function directly with force=true so it:
+  //   1. Deletes today's existing briefing (using service-role key server-side)
+  //   2. Fetches the last 36 h of articles from the DB
+  //   3. Calls Groq to generate a full 900-1,100 word script
+  //   4. Stores the result in daily_briefings
+  // This avoids the news-agent's slow article-ingestion pipeline and bypasses
+  // the anon-key RLS restriction that silently blocked the old delete approach.
   const regenerate = useCallback(async () => {
     if (regenerating) return
     stop()
@@ -144,16 +316,29 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
       return
     }
 
-    // First: delete today's short briefing so the news-agent will regenerate it
-    try {
-      const today = new Date().toISOString().split('T')[0]
-      await supabase?.from('daily_briefings').delete().eq('briefing_date', today)
-    } catch (_) { /* best-effort */ }
+    // Serialise the articles currently visible on the page.
+    // The function uses these directly so it always generates from what the
+    // user sees — works with both mock and live data, no DB query needed.
+    const articlePayload = (allArticles ?? []).slice(0, 25).map((a) => ({
+      id:                      a.id,
+      headline:                a.headline,
+      summary:                 a.summary,
+      whyItMatters:            a.whyItMatters,
+      category:                a.category,
+      impact:                  a.impact,
+      regions:                 a.regions,
+      source:                  a.source,
+      publishedAt:             a.publishedAt,
+      shortTermImpact:         a.shortTermImpact,
+      mediumTermImpact:        a.mediumTermImpact,
+      strategicRecommendation: a.strategicRecommendation,
+      financialImpactLabel:    a.financialImpactLabel,
+      financialImpactHigh:     a.financialImpactHigh,
+    }))
 
-    // Then: trigger the news-agent — it runs article ingestion + briefing generation
     try {
       const res = await fetch(
-        `${supabaseUrl}/functions/v1/news-agent`,
+        `${supabaseUrl}/functions/v1/daily-briefing?force=true`,
         {
           method:  'POST',
           headers: {
@@ -161,8 +346,8 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
             'apikey':         anonKey,
             'Content-Type':  'application/json',
           },
-          body:   JSON.stringify({}),
-          signal: AbortSignal.timeout(180_000), // 3-min timeout (news + briefing generation)
+          body:   JSON.stringify({ articles: articlePayload }),
+          signal: AbortSignal.timeout(120_000), // 2-min timeout — briefing only, no article pipeline
         }
       )
       const data = await res.json().catch(() => ({}))
@@ -170,11 +355,11 @@ function PodcastPlayer({ briefing, refreshBriefing }) {
         setRegenStatus('ok')
         await refreshBriefing?.()
       } else {
-        console.warn('news-agent returned:', data)
+        console.warn('daily-briefing returned:', data)
         setRegenStatus('error')
       }
     } catch (err) {
-      console.error('Regenerate via news-agent failed:', err)
+      console.error('Regenerate via daily-briefing failed:', err)
       setRegenStatus('error')
     } finally {
       setRegenerating(false)
@@ -648,7 +833,7 @@ export default function Dashboard({ allArticles, highImpactArticles, stats, load
   return (
     <div>
       {/* Morning Intelligence Podcast */}
-      {latestBriefing && <PodcastPlayer briefing={latestBriefing} refreshBriefing={refreshBriefing} />}
+      {latestBriefing && <PodcastPlayer briefing={latestBriefing} refreshBriefing={refreshBriefing} allArticles={articles} />}
 
       {/* Intelligence summary bar */}
       <DailyBriefing articles={articles} />

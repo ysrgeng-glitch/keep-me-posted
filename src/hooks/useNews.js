@@ -184,7 +184,8 @@ export function useNews() {
     try {
       if (isSupabaseConfigured) {
         const briefing = await fetchLatestBriefing()
-        setLatestBriefing(briefing)
+        // Fall back to mock if the table exists but has no rows yet
+        setLatestBriefing(briefing ?? mockDailyBriefing)
       } else {
         setLatestBriefing(mockDailyBriefing)
       }
