@@ -13,14 +13,14 @@ import { useState, useEffect } from 'react'
 const STATIC_FALLBACK = {
   lamb: {
     value: 1193,
-    label: '1193¢/kg',
+    label: '$11.93/kg',
     unit: 'cwt',
     saleyard: 'Light Lamb Indicator (MLA)',
     direction: null,
   },
   beef: {
     value: 456,
-    label: '456¢/kg',
+    label: '$4.56/kg',
     unit: 'lw',
     saleyard: 'Feeder Steer Indicator (MLA)',
     direction: null,

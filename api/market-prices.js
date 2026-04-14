@@ -116,8 +116,8 @@ export default async function handler(req, res) {
       if (parsed.lamb || parsed.beef) {
         if (parsed.lamb) {
           result.lamb = {
-            value:  parsed.lamb,                          // c/kg
-            label:  `${Math.round(parsed.lamb)}¢/kg`,
+            value:  parsed.lamb,
+            label:  `$${(parsed.lamb / 100).toFixed(2)}/kg`,
             unit:   'cwt',
             name:   parsed.lambName,
             source: 'MLA',
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
         if (parsed.beef) {
           result.beef = {
             value:  parsed.beef,
-            label:  `${Math.round(parsed.beef)}¢/kg`,
+            label:  `$${(parsed.beef / 100).toFixed(2)}/kg`,
             unit:   'lw',
             name:   parsed.beefName,
             source: 'MLA',
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
   if (!result.lamb) {
     result.lamb = {
       value:  1193,
-      label:  '1193¢/kg',
+      label:  '$11.93/kg',
       unit:   'cwt',
       name:   'Light Lamb Indicator',
       source: 'MLA (last known)',
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
   if (!result.beef) {
     result.beef = {
       value:  456,
-      label:  '456¢/kg',
+      label:  '$4.56/kg',
       unit:   'lw',
       name:   'Feeder Steer',
       source: 'MLA (last known)',
