@@ -24,7 +24,8 @@ CRITICAL WRITING RULES:
 - Section headers must be spoken as transitions: say "Moving to our market intelligence section." not "## SECTION 2"
 - NEVER invent facts not present in the provided articles. If you don't have a price, say you don't have it.
 - You MUST use ALL provided articles. Do not skip any article — weave every story into the appropriate section.
-- Target length: 900 to 1,100 words of dense spoken content. This is approximately seven to eight minutes of audio at a natural speaking pace.
+- Target length: MINIMUM 900 words, MAXIMUM 1,100 words. Count every word you write. If you are under 900 words after the Outro, go back and expand each section. A 900-word script takes approximately seven minutes to read aloud.
+- Do NOT finish early. Do NOT summarise briefly. Write in full sentences until you reach at least 900 words.
 
 EXACT STRUCTURE TO FOLLOW:
 
@@ -166,7 +167,7 @@ Deno.serve(async (req) => {
           body: JSON.stringify({
             model: 'llama-3.3-70b-versatile',
             temperature: 0.4,
-            max_tokens: 2000,
+            max_tokens: 2500,
             messages: [
               { role: 'system', content: PODCAST_SYSTEM_PROMPT },
               { role: 'user',   content: userPrompt },

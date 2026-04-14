@@ -28,13 +28,15 @@ function resolveVerification(status, source) {
 
 // ── Morning Intelligence Podcast Player ──────────────────────────────────────
 
-function PodcastPlayer({ briefing }) {
+function PodcastPlayer({ briefing, refreshBriefing }) {
   const [playing,       setPlaying]       = useState(false)
   const [paused,        setPaused]        = useState(false)
-  const [progress,      setProgress]      = useState(0)   // 0–100
-  const [elapsed,       setElapsed]       = useState(0)   // seconds
+  const [progress,      setProgress]      = useState(0)
+  const [elapsed,       setElapsed]       = useState(0)
   const [totalSecs,     setTotalSecs]     = useState(0)
   const [showTranscript,setShowTranscript]= useState(false)
+  const [regenerating,  setRegenerating]  = useState(false)
+  const [regenStatus,   setRegenStatus]   = useState(null) // null | 'ok' | 'error'
   const [supported]    = useState(() => typeof window !== 'undefined' && 'speechSynthesis' in window)
   const utteranceRef   = useRef(null)
   const timerRef       = useRef(null)
@@ -47,19 +49,25 @@ function PodcastPlayer({ briefing }) {
     return briefing.briefing_text
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/^#{1,3}\s/gm, '')
-      .replace(/•\s/g, '. Next. ')
-      .replace(/\n{2,}/g, '. ')
+      .replace(/•\s/g, '. ')
+      .replace(/\n{2,}/g, ' ')
+      .replace(/\n/g, ' ')
   }, [briefing?.briefing_text])
 
-  // Estimate reading time (~150 wpm for TTS at 0.92x)
-  const estimatedMinutes = useMemo(() => {
-    const words = ttsText.split(/\s+/).length
-    return Math.max(1, Math.round(words / 140))
-  }, [ttsText])
+  const wordCount        = useMemo(() => ttsText.split(/\s+/).filter(Boolean).length, [ttsText])
+  const estimatedMinutes = useMemo(() => Math.max(1, Math.round(wordCount / 125)), [wordCount])
+  // Briefing is considered "short" (likely the fallback text) if under 200 words
+  const isShortBriefing  = wordCount < 200
 
+  useEffect(() => { setTotalSecs(estimatedMinutes * 60) }, [estimatedMinutes])
+
+  // Stop playback when briefing content changes (e.g. after regeneration)
   useEffect(() => {
-    setTotalSecs(estimatedMinutes * 60)
-  }, [estimatedMinutes])
+    window.speechSynthesis?.cancel()
+    clearInterval(timerRef.current)
+    setPlaying(false); setPaused(false); setProgress(0); setElapsed(0)
+    elapsedAtPause.current = 0
+  }, [briefing?.id, briefing?.briefing_text])
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -76,31 +84,24 @@ function PodcastPlayer({ briefing }) {
     }, 500)
   }, [totalSecs])
 
-  const stopTimer = useCallback(() => {
-    clearInterval(timerRef.current)
-  }, [])
+  const stopTimer = useCallback(() => { clearInterval(timerRef.current) }, [])
 
   const play = useCallback(() => {
     if (!supported || !ttsText) return
     if (paused) {
-      // Resume
       window.speechSynthesis.resume()
-      setPaused(false)
-      setPlaying(true)
-      startTimer()
+      setPaused(false); setPlaying(true); startTimer()
       return
     }
     window.speechSynthesis.cancel()
     clearInterval(timerRef.current)
     elapsedAtPause.current = 0
-    setElapsed(0)
-    setProgress(0)
+    setElapsed(0); setProgress(0)
 
     const u = new SpeechSynthesisUtterance(ttsText)
     u.rate  = 0.95
     u.pitch = 1.0
     u.lang  = 'en-AU'
-    // Try to pick an Australian voice if available
     const voices = window.speechSynthesis.getVoices()
     const auVoice = voices.find(v => v.lang === 'en-AU') || voices.find(v => v.lang.startsWith('en'))
     if (auVoice) u.voice = auVoice
@@ -108,27 +109,61 @@ function PodcastPlayer({ briefing }) {
     u.onerror = () => { setPlaying(false); setPaused(false); stopTimer() }
     utteranceRef.current = u
     window.speechSynthesis.speak(u)
-    setPlaying(true)
-    startTimer()
+    setPlaying(true); startTimer()
   }, [supported, ttsText, paused, startTimer, stopTimer])
 
   const pause = useCallback(() => {
     window.speechSynthesis.pause()
     elapsedAtPause.current = elapsed
-    stopTimer()
-    setPlaying(false)
-    setPaused(true)
+    stopTimer(); setPlaying(false); setPaused(true)
   }, [elapsed, stopTimer])
 
   const stop = useCallback(() => {
     window.speechSynthesis.cancel()
     clearInterval(timerRef.current)
     elapsedAtPause.current = 0
-    setPlaying(false)
-    setPaused(false)
-    setProgress(0)
-    setElapsed(0)
+    setPlaying(false); setPaused(false); setProgress(0); setElapsed(0)
   }, [])
+
+  // ── Regenerate briefing from the Edge Function ────────────────────────────
+  const regenerate = useCallback(async () => {
+    if (regenerating) return
+    stop()
+    setRegenerating(true)
+    setRegenStatus(null)
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY
+      if (!supabaseUrl || !anonKey) throw new Error('Supabase not configured')
+
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/daily-briefing?force=true`,
+        {
+          method:  'POST',
+          headers: {
+            'Authorization': `Bearer ${anonKey}`,
+            'apikey':         anonKey,
+            'Content-Type':  'application/json',
+          },
+          body:   JSON.stringify({}),
+          signal: AbortSignal.timeout(120_000), // 2-min timeout — Groq can be slow
+        }
+      )
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.ok !== false) {
+        setRegenStatus('ok')
+        await refreshBriefing?.()
+      } else {
+        console.warn('Regenerate returned error:', data)
+        setRegenStatus('error')
+      }
+    } catch (err) {
+      console.error('Regenerate briefing failed:', err)
+      setRegenStatus('error')
+    } finally {
+      setRegenerating(false)
+    }
+  }, [regenerating, stop, refreshBriefing])
 
   if (!briefing) return null
 
@@ -140,6 +175,42 @@ function PodcastPlayer({ briefing }) {
 
   return (
     <div className="podcast-player">
+
+      {/* Short briefing warning */}
+      {isShortBriefing && (
+        <div style={{
+          background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 'var(--radius-sm)',
+          padding: '8px 14px', marginBottom: 8,
+          fontSize: '0.8125rem', color: '#92400e',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        }}>
+          <span>⚠️ Briefing appears incomplete ({wordCount} words). The AI script may not have been generated yet — click Regenerate to create a full 7–8 min briefing from today's news.</span>
+          <button
+            onClick={regenerate}
+            disabled={regenerating}
+            style={{
+              flexShrink: 0, padding: '4px 12px', background: '#f59e0b', color: '#fff',
+              border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: 700,
+              fontSize: '0.75rem', cursor: regenerating ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {regenerating ? 'Generating…' : 'Regenerate'}
+          </button>
+        </div>
+      )}
+
+      {/* Regeneration status messages */}
+      {regenStatus === 'ok' && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 'var(--radius-sm)', padding: '6px 14px', marginBottom: 8, fontSize: '0.8125rem', color: '#166534' }}>
+          ✓ New briefing generated — press play to hear today's full intelligence report.
+        </div>
+      )}
+      {regenStatus === 'error' && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 'var(--radius-sm)', padding: '6px 14px', marginBottom: 8, fontSize: '0.8125rem', color: '#991b1b' }}>
+          ✗ Could not regenerate. Make sure the Edge Function is deployed: <code style={{ fontSize: '0.75rem' }}>supabase functions deploy daily-briefing</code>
+        </div>
+      )}
+
       {/* Episode header */}
       <div className="podcast-header">
         <div className="podcast-cover">
@@ -157,28 +228,42 @@ function PodcastPlayer({ briefing }) {
           <div className="podcast-date">
             {briefingDate}
             <span className="podcast-divider">·</span>
-            {briefing.article_count ?? 0} developments
+            {briefing.article_count ?? 0} stories
+            <span className="podcast-divider">·</span>
+            {wordCount} words
             <span className="podcast-divider">·</span>
             ~{estimatedMinutes} min
           </div>
         </div>
 
         <div className="podcast-actions">
+          {/* Regenerate button */}
+          <button
+            className="podcast-btn"
+            onClick={regenerate}
+            disabled={regenerating || playing}
+            title="Regenerate today's briefing from current news"
+            style={{ fontSize: '0.75rem', padding: '6px 10px', opacity: regenerating ? 0.6 : 1 }}
+          >
+            {regenerating
+              ? <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>↻</span>
+              : '↻'}
+          </button>
+
           {!supported && (
             <span className="podcast-unsupported">Audio not supported in this browser</span>
           )}
           {supported && (
             <>
-              {/* Stop (only when active) */}
               {(playing || paused) && (
                 <button className="podcast-btn podcast-btn--stop" onClick={stop} title="Stop">
                   <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
                 </button>
               )}
-              {/* Play / Pause */}
               <button
                 className={`podcast-btn podcast-btn--main${playing ? ' podcast-btn--playing' : ''}`}
                 onClick={playing ? pause : play}
+                disabled={regenerating}
                 title={playing ? 'Pause' : paused ? 'Resume' : 'Play briefing'}
               >
                 {playing ? (
@@ -201,7 +286,7 @@ function PodcastPlayer({ briefing }) {
           <div className="podcast-time-labels">
             <span>{fmtTime(elapsed)}</span>
             <span style={{ opacity: 0.5 }}>
-              {playing ? 'Playing…' : paused ? 'Paused' : 'Ready to play'}
+              {regenerating ? 'Generating new briefing…' : playing ? 'Playing…' : paused ? 'Paused' : 'Ready to play'}
             </span>
             <span>-{fmtTime(Math.max(0, totalSecs - elapsed))}</span>
           </div>
@@ -220,19 +305,15 @@ function PodcastPlayer({ briefing }) {
               const blob = new Blob([briefing.briefing_text], { type: 'text/plain;charset=utf-8' })
               const url  = URL.createObjectURL(blob)
               const a    = document.createElement('a')
-              a.href     = url
+              a.href = url
               a.download = `grasshopper-news-briefing-${dateStr}.txt`
               a.click()
               URL.revokeObjectURL(url)
             }}
             style={{
-              background: 'none',
-              border: '1px solid var(--border-light)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-muted)',
-              fontSize: '0.75rem',
-              padding: '3px 10px',
-              cursor: 'pointer',
+              background: 'none', border: '1px solid var(--border-light)',
+              borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)',
+              fontSize: '0.75rem', padding: '3px 10px', cursor: 'pointer',
             }}
           >
             ↓ Download transcript
@@ -244,10 +325,10 @@ function PodcastPlayer({ briefing }) {
         <div className="podcast-transcript">
           {briefing.briefing_text?.split('\n').map((line, i) => {
             if (!line.trim()) return <div key={i} style={{ height: 8 }} />
-            const isBold = line.startsWith('**') && line.endsWith('**')
-            const clean = line.replace(/\*\*(.*?)\*\*/g, '$1').replace(/^•\s/, '')
+            const isBold   = line.startsWith('**') && line.endsWith('**')
+            const clean    = line.replace(/\*\*(.*?)\*\*/g, '$1').replace(/^•\s/, '')
             const isBullet = line.trimStart().startsWith('•')
-            if (isBold) return <div key={i} className="transcript-heading">{clean}</div>
+            if (isBold)   return <div key={i} className="transcript-heading">{clean}</div>
             if (isBullet) return <div key={i} className="transcript-bullet">• {clean.trimStart().replace(/^•\s?/, '')}</div>
             return <p key={i} className="transcript-para">{clean}</p>
           })}
@@ -543,7 +624,7 @@ function LivePricesRow() {
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
-export default function Dashboard({ allArticles, highImpactArticles, stats, loading, latestBriefing }) {
+export default function Dashboard({ allArticles, highImpactArticles, stats, loading, latestBriefing, refreshBriefing }) {
   const articles = allArticles ?? []
   // allArticles is already top-10 deduplicated and priority-sorted
   const recentArticles = articles
@@ -551,7 +632,7 @@ export default function Dashboard({ allArticles, highImpactArticles, stats, load
   return (
     <div>
       {/* Morning Intelligence Podcast */}
-      {latestBriefing && <PodcastPlayer briefing={latestBriefing} />}
+      {latestBriefing && <PodcastPlayer briefing={latestBriefing} refreshBriefing={refreshBriefing} />}
 
       {/* Intelligence summary bar */}
       <DailyBriefing articles={articles} />

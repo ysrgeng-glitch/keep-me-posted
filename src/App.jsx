@@ -36,6 +36,7 @@ function AppInner() {
     stats,
     getArticle,
     latestBriefing,
+    refreshBriefing,
   } = useNews()
 
   function handleGlobalSearch(query) {
@@ -65,6 +66,7 @@ function AppInner() {
               stats={stats}
               loading={loading}
               latestBriefing={latestBriefing}
+              refreshBriefing={refreshBriefing}
             />
           }
         />
@@ -97,6 +99,7 @@ function AppInner() {
               stats={stats}
               loading={loading}
               latestBriefing={latestBriefing}
+              refreshBriefing={refreshBriefing}
             />
           }
         />
