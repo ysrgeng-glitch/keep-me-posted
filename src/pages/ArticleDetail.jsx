@@ -17,7 +17,6 @@ import RegionTag from '../components/common/RegionTag'
 import CategoryBadge from '../components/common/CategoryBadge'
 import ConfidenceScore from '../components/common/ConfidenceScore'
 import VerificationBadge from '../components/common/VerificationBadge'
-import FinancialImpact from '../components/common/FinancialImpact'
 import TimeHorizon from '../components/common/TimeHorizon'
 import { formatDate, formatRelativeTime } from '../utils/scoring'
 
@@ -92,15 +91,6 @@ export default function ArticleDetail({ getArticle }) {
 
         {/* Summary */}
         <p className="article-summary">{article.summary}</p>
-
-        {/* Financial Impact — prominent display */}
-        {article.financialImpactLabel && (
-          <FinancialImpact
-            label={article.financialImpactLabel}
-            low={article.financialImpactLow}
-            high={article.financialImpactHigh}
-          />
-        )}
 
         {/* Why it matters */}
         <div className="article-why-matters">

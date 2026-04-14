@@ -326,11 +326,11 @@ export const mockDailyBriefing = {
 This morning's briefing covers 12 significant developments across drought conditions, export trade, industrial relations, and biosecurity. The overall intelligence picture presents a challenging near-term operating environment offset by meaningful medium-term export upside.
 
 **NEW & CHANGED DEVELOPMENTS**
-• [HIGH] ABARES drought alert upgraded to critical for SA Flinders Ranges and VIC Wimmera — supply tightening confirmed; $2.0M–$8.0M EBITDA risk
-• [HIGH] China ChAFTA final tariff elimination confirmed for 1 July — $3.5M–$12.0M revenue upside for export-grade operations
-• [HIGH] SA meatworks industrial action imminent — AWU protected notice lodged at three facilities; $1.5M–$5.0M revenue at immediate risk
-• [HIGH] Feed grain prices surge 22% east coast — $800K–$3.0M EBITDA risk through feedlot supply chain
-• [HIGH] TAS FMD biosecurity protocols elevated — Indonesia Bali Province incursion confirmed; tail risk scenario $50M+ export closure
+• [HIGH] ABARES drought alert upgraded to critical for SA Flinders Ranges and VIC Wimmera — supply tightening confirmed
+• [HIGH] China ChAFTA final tariff elimination confirmed for 1 July — significant revenue upside for export-grade operations
+• [HIGH] SA meatworks industrial action imminent — AWU protected notice lodged at three facilities; revenue at immediate risk
+• [HIGH] Feed grain prices surge 22% east coast — feedlot supply chain under pressure
+• [HIGH] TAS FMD biosecurity protocols elevated — Indonesia Bali Province incursion confirmed; export closure tail risk
 • [MEDIUM] MLA Q2 price outlook: beef firm, lamb softening 5–8% — procurement window opening
 
 **STRATEGIC ANALYSIS**
@@ -338,10 +338,8 @@ The simultaneous drought escalation and export market improvement creates a crit
 
 The FMD biosecurity alert in Tasmania represents a low-probability, catastrophic-impact tail risk that demands immediate protocol review regardless of current probability assessments.
 
-**FINANCIAL & OPERATIONAL IMPACT**
-Aggregate near-term financial exposure: $6.0M–$17.0M EBITDA risk across active threats.
-Primary upside: $3.5M–$12.0M revenue opportunity from China tariff elimination (6-month horizon).
-Net position: Cautious — near-term headwinds are real and immediate; upside requires 3–6 months to materialise.
+**OPERATIONAL IMPACT**
+Near-term headwinds are real and immediate across drought, feed costs, and industrial action risk. The China tariff opportunity requires 3–6 months to materialise but warrants preparation now.
 
 **LEADERSHIP RECOMMENDATIONS**
 • Convene emergency SA industrial action response plan within 24 hours; identify VIC processing backup capacity immediately

@@ -40,18 +40,10 @@ function IconArrow() {
   )
 }
 
-function ImpactArrow({ label }) {
-  if (!label) return null
-  const isUpside = /upside|opportunit|saving|benefit|revenue/i.test(label)
-  const isRisk   = /risk|exposure|cost|loss/i.test(label)
-  const color    = isUpside ? 'var(--color-positive)' : isRisk ? 'var(--color-negative)' : 'var(--color-warning)'
-  const bg       = isUpside ? '#f0fdf4' : isRisk ? '#fff5f5' : '#fffbeb'
-  const symbol   = isUpside ? '▲' : isRisk ? '▼' : '◆'
-
+function ImpactArrow() {
+  // Financial impact labels removed from UI
   return (
-    <span className="nc-financial" style={{ color, background: bg }}>
-      {symbol} {label}
-    </span>
+    <span style={{ display: 'none' }}>
   )
 }
 

@@ -5,7 +5,6 @@ const VERIFICATION_OPTIONS = [
   { value: 'VERIFIED',          label: 'Official Sources Only' },
   { value: 'VERIFIED_OFFICIAL', label: 'Government / MLA' },
   { value: 'ANALYST_INFERENCE', label: 'Trusted Industry Media' },
-  { value: 'UNCONFIRMED',       label: 'Unconfirmed' },
 ]
 
 const TIME_HORIZON_OPTIONS = [
@@ -86,7 +85,6 @@ export default function NewsFilters({ filters, onFilterChange, onReset, resultCo
             <option value="priority">Priority (Impact → Date)</option>
             <option value="date">Latest First</option>
             <option value="impact">Highest Impact Score</option>
-            <option value="financial">Largest Financial Impact</option>
             <option value="confidence">Confidence Score</option>
           </select>
         </div>
