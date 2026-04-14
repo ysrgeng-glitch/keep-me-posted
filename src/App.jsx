@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
 import Layout from './components/layout/Layout'
 import Dashboard from './pages/Dashboard'
 import NewsFeed from './pages/NewsFeed'
@@ -6,10 +7,20 @@ import ArticleDetail from './pages/ArticleDetail'
 import Forecast from './pages/Forecast'
 import { useNews } from './hooks/useNews'
 
-// Inner app component that has access to router context
+const PAGE_TITLES = {
+  '/':         'Grasshopper News | Dashboard',
+  '/news':     'Grasshopper News | Intelligence Feed',
+  '/forecast': 'Grasshopper News | Forecast & Signals',
+}
+
 function AppInner() {
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const title = PAGE_TITLES[location.pathname] ?? 'Grasshopper News'
+    document.title = title
+  }, [location.pathname])
 
   const {
     articles,
@@ -18,14 +29,15 @@ function AppInner() {
     loading,
     refresh,
     lastRefreshed,
+    usingLive,
     filters,
     setFilter,
     resetFilters,
     stats,
     getArticle,
+    latestBriefing,
   } = useNews()
 
-  // Global search: update query filter and navigate to news feed
   function handleGlobalSearch(query) {
     setFilter('query', query)
     if (query && location.pathname !== '/news') {
@@ -39,6 +51,7 @@ function AppInner() {
       loading={loading}
       onRefresh={refresh}
       lastRefreshed={lastRefreshed}
+      usingLive={usingLive}
       searchQuery={filters.query}
       onSearchChange={handleGlobalSearch}
     >
@@ -51,6 +64,7 @@ function AppInner() {
               highImpactArticles={highImpactArticles}
               stats={stats}
               loading={loading}
+              latestBriefing={latestBriefing}
             />
           }
         />
@@ -74,8 +88,18 @@ function AppInner() {
           path="/forecast"
           element={<Forecast />}
         />
-        {/* Catch-all → dashboard */}
-        <Route path="*" element={<Dashboard highImpactArticles={highImpactArticles} stats={stats} loading={loading} />} />
+        <Route
+          path="*"
+          element={
+            <Dashboard
+              allArticles={allArticles}
+              highImpactArticles={highImpactArticles}
+              stats={stats}
+              loading={loading}
+              latestBriefing={latestBriefing}
+            />
+          }
+        />
       </Routes>
     </Layout>
   )

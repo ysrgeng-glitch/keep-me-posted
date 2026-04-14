@@ -1,5 +1,3 @@
-import { useNavigate } from 'react-router-dom'
-
 function IconSearch() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -19,13 +17,17 @@ function IconRefresh() {
 }
 
 const PAGE_META = {
-  '/': { title: 'Intelligence Dashboard', subtitle: 'Real-time news briefing for AU Beef & Lamb' },
-  '/news': { title: 'News Feed', subtitle: 'Filtered & ranked by business impact' },
-  '/forecast': { title: 'Forecast & Market Signals', subtitle: 'Price projections and forward indicators' },
+  '/':         { title: 'Intelligence Dashboard',        subtitle: 'Grasshopper News — Australian Beef & Lamb Intelligence, Powered by AI' },
+  '/news':     { title: 'Intelligence Feed',             subtitle: 'AI-verified news ranked by financial impact' },
+  '/forecast': { title: 'Forecast & Market Signals',     subtitle: 'Price projections and forward indicators' },
 }
 
-export default function Header({ pathname, onRefresh, loading, searchQuery, onSearchChange }) {
-  const meta = PAGE_META[pathname] ?? { title: 'Keep Me Posted', subtitle: '' }
+export default function Header({ pathname, onRefresh, loading, searchQuery, onSearchChange, lastRefreshed }) {
+  const meta = PAGE_META[pathname] ?? { title: 'Grasshopper News', subtitle: '' }
+
+  const lastRefreshedStr = lastRefreshed
+    ? lastRefreshed.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+    : null
 
   return (
     <header className="header">
@@ -41,26 +43,29 @@ export default function Header({ pathname, onRefresh, loading, searchQuery, onSe
           <IconSearch />
           <input
             type="search"
-            placeholder="Search news, sources, regions…"
+            placeholder="Search intelligence, sources, topics…"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            aria-label="Search news"
+            aria-label="Search intelligence"
           />
         </div>
       </div>
 
       {/* Actions */}
       <div className="header-right">
+        {lastRefreshedStr && (
+          <span className="header-last-refreshed">Updated {lastRefreshedStr}</span>
+        )}
         <button
           className="header-refresh-btn"
           onClick={onRefresh}
           disabled={loading}
-          title="Refresh news feed"
+          title="Refresh Intelligence"
         >
           <span style={{ display: 'inline-block', animation: loading ? 'spin 1s linear infinite' : 'none' }}>
             <IconRefresh />
           </span>
-          Refresh
+          {loading ? 'Refreshing…' : 'Refresh Intelligence'}
         </button>
 
         <div className="header-live-badge">

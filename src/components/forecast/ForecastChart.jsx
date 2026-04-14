@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 
 // Custom tooltip
-function CustomTooltip({ active, payload, label, unit = 'c/kg cwt' }) {
+function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
 
   return (
@@ -29,7 +29,7 @@ function CustomTooltip({ active, payload, label, unit = 'c/kg cwt' }) {
             <span style={{ width: 10, height: 10, borderRadius: 2, background: entry.color, display: 'inline-block' }} />
             <span style={{ color: 'var(--text-secondary)' }}>{entry.name}:</span>
             <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-              {typeof entry.value === 'number' ? `${entry.value}${unit}` : entry.value}
+              {typeof entry.value === 'number' ? `$${entry.value.toFixed(2)}/kg` : entry.value}
             </span>
           </div>
         )
@@ -38,7 +38,7 @@ function CustomTooltip({ active, payload, label, unit = 'c/kg cwt' }) {
   )
 }
 
-export default function ForecastChart({ data, title, color = '#2d8653', unit = 'c/kg cwt' }) {
+export default function ForecastChart({ data, title, color = '#2d8653' }) {
   const todayIndex = data.findIndex((d) => d.actual != null && data[data.indexOf(d) + 1]?.actual == null)
 
   return (
@@ -61,11 +61,12 @@ export default function ForecastChart({ data, title, color = '#2d8653', unit = '
         <YAxis
           tick={{ fontSize: 11, fill: 'var(--text-subtle)', fontFamily: 'var(--font-body)' }}
           axisLine={false} tickLine={false}
-          tickFormatter={(v) => `${v}`}
-          width={38}
+          tickFormatter={(v) => `$${v.toFixed(2)}`}
+          width={52}
+          domain={['auto', 'auto']}
         />
 
-        <Tooltip content={<CustomTooltip unit={unit} />} />
+        <Tooltip content={<CustomTooltip />} />
 
         {/* Forecast confidence band */}
         <Area

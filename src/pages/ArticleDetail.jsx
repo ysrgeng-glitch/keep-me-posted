@@ -1,8 +1,24 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import ImpactBadge from '../components/common/ImpactBadge'
+
+const KNOWN_TRUSTED_SOURCES = new Set([
+  'Beef Central', 'Sheep Central', 'MLA News', 'Stock Journal', 'The Land',
+  'Farm Online', 'ABC Rural', 'ABC News AU', 'ABC News', 'Grain Central',
+  'Weekly Times', 'The Cattle Site', 'Drovers', 'Global Meat News',
+  'Beef Magazine', 'AHDB Beef & Lamb', 'USDA AMS Livestock', 'Reuters Trade',
+  'Reuters', 'Bloomberg', 'AP', 'AAP', 'The Guardian', 'AgWeb',
+  'Australian Financial Review', 'The Australian', 'SBS News',
+])
+const KNOWN_OFFICIAL_SOURCES = new Set([
+  'MLA News', 'ABARES', 'ABS', 'BOM', 'DAFF', 'Australian Government',
+  'Department of Agriculture', 'USDA AMS Livestock', 'AHDB Beef & Lamb',
+])
 import RegionTag from '../components/common/RegionTag'
 import CategoryBadge from '../components/common/CategoryBadge'
 import ConfidenceScore from '../components/common/ConfidenceScore'
+import VerificationBadge from '../components/common/VerificationBadge'
+import FinancialImpact from '../components/common/FinancialImpact'
+import TimeHorizon from '../components/common/TimeHorizon'
 import { formatDate, formatRelativeTime } from '../utils/scoring'
 
 function IconBack() {
@@ -20,14 +36,20 @@ function IconMedTerm() {
 function IconStrategy() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
 }
-function IconTags() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
-}
 
 export default function ArticleDetail({ getArticle }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const article = getArticle(id)
+
+  const effectiveVerification = (() => {
+    if (!article) return 'UNCONFIRMED'
+    const status = article.verificationStatus
+    const src    = article.source
+    if (status === 'UNCONFIRMED' && KNOWN_OFFICIAL_SOURCES.has(src))  return 'VERIFIED_OFFICIAL'
+    if (status === 'UNCONFIRMED' && KNOWN_TRUSTED_SOURCES.has(src))   return 'ANALYST_INFERENCE'
+    return status
+  })()
 
   if (!article) {
     return (
@@ -42,26 +64,45 @@ export default function ArticleDetail({ getArticle }) {
 
   return (
     <div className="article-detail-wrap">
-      {/* Back button */}
+
+      {/* Back */}
       <button className="article-back-btn" onClick={() => navigate(-1)}>
         <IconBack /> Back
       </button>
 
-      {/* Article header */}
+      {/* ── Article header ──────────────────────────────────────── */}
       <div className="article-header">
+
+        {/* Tier 1: Impact + Verification + Time Horizon */}
         <div className="article-meta-row">
           <ImpactBadge level={article.impact} />
+          <VerificationBadge status={effectiveVerification} />
+          <TimeHorizon horizon={article.timeHorizon} />
+        </div>
+
+        {/* Tier 2: Category + Regions + Confidence */}
+        <div className="article-meta-row" style={{ marginTop: 6 }}>
           <CategoryBadge category={article.category} />
-          {article.regions.map((r) => (
-            <RegionTag key={r} region={r} />
-          ))}
+          {(article.regions ?? []).map((r) => <RegionTag key={r} region={r} />)}
           <ConfidenceScore score={article.confidenceScore} />
         </div>
 
+        {/* Headline */}
         <h1 className="article-headline">{article.headline}</h1>
 
+        {/* Summary */}
         <p className="article-summary">{article.summary}</p>
 
+        {/* Financial Impact — prominent display */}
+        {article.financialImpactLabel && (
+          <FinancialImpact
+            label={article.financialImpactLabel}
+            low={article.financialImpactLow}
+            high={article.financialImpactHigh}
+          />
+        )}
+
+        {/* Why it matters */}
         <div className="article-why-matters">
           <div className="article-why-matters-label">Why this matters</div>
           <p className="article-why-matters-text">{article.whyItMatters}</p>
@@ -85,7 +126,7 @@ export default function ArticleDetail({ getArticle }) {
         </div>
       </div>
 
-      {/* Impact analysis grid */}
+      {/* ── Impact analysis ─────────────────────────────────────── */}
       <div className="article-analysis-grid">
         <div className="analysis-card">
           <div className="analysis-card-label analysis-card-label--short">
@@ -103,7 +144,7 @@ export default function ArticleDetail({ getArticle }) {
         </div>
       </div>
 
-      {/* Strategic recommendation */}
+      {/* ── Strategic recommendation ─────────────────────────────── */}
       <div className="strategy-card">
         <div className="strategy-card-label">
           <IconStrategy />
@@ -112,11 +153,10 @@ export default function ArticleDetail({ getArticle }) {
         <p className="strategy-card-text">{article.strategicRecommendation}</p>
       </div>
 
-      {/* Tags */}
+      {/* ── Tags ────────────────────────────────────────────────── */}
       {article.tags?.length > 0 && (
         <div className="analysis-card">
           <div className="analysis-card-label" style={{ color: 'var(--text-muted)' }}>
-            <IconTags />
             Topics &amp; Tags
           </div>
           <div className="tags-wrap">
@@ -126,6 +166,7 @@ export default function ArticleDetail({ getArticle }) {
           </div>
         </div>
       )}
+
     </div>
   )
 }
