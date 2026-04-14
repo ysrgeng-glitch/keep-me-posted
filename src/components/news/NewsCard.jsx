@@ -40,12 +40,7 @@ function IconArrow() {
   )
 }
 
-function ImpactArrow() {
-  // Financial impact labels removed from UI
-  return (
-    <span style={{ display: 'none' }}>
-  )
-}
+function ImpactArrow() { return null }
 
 export default function NewsCard({ article }) {
   const navigate    = useNavigate()
