@@ -252,11 +252,34 @@ function PodcastPlayer({ briefing, refreshBriefing, allArticles }) {
 
     const speak = (voices) => {
       const u = new SpeechSynthesisUtterance(ttsText)
-      u.rate  = 0.95
+      u.rate  = 1.15   // slightly faster — sounds more like a real presenter
       u.pitch = 1.0
       u.lang  = 'en-AU'
-      const auVoice = voices.find(v => v.lang === 'en-AU') || voices.find(v => v.lang.startsWith('en'))
-      if (auVoice) u.voice = auVoice
+
+      // Voice priority: Google neural (Chrome) → macOS Premium → any en-AU → any en
+      // Google neural voices sound genuinely human; premium macOS voices are close.
+      const GOOGLE_PREFERRED = [
+        'Google Australian English',
+        'Google US English',
+        'Google UK English Female',
+        'Google UK English Male',
+      ]
+      const MACOS_PREFERRED = [
+        'Karen',      // en-AU, natural on macOS
+        'Samantha',   // en-US, very clear on macOS
+        'Daniel',     // en-GB, clear
+      ]
+
+      const best =
+        GOOGLE_PREFERRED.reduce((found, name) => found || voices.find(v => v.name === name), null) ||
+        voices.find(v => v.lang === 'en-AU' && (v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Neural'))) ||
+        voices.find(v => v.lang.startsWith('en') && (v.name.includes('Premium') || v.name.includes('Enhanced') || v.name.includes('Neural'))) ||
+        MACOS_PREFERRED.reduce((found, name) => found || voices.find(v => v.name === name), null) ||
+        voices.find(v => v.lang === 'en-AU') ||
+        voices.find(v => v.lang.startsWith('en'))
+
+      if (best) u.voice = best
+
       u.onend   = () => { setPlaying(false); setPaused(false); setProgress(100); stopTimer(); stopResumeKeepalive() }
       u.onerror = () => { setPlaying(false); setPaused(false); stopTimer(); stopResumeKeepalive() }
       utteranceRef.current = u
