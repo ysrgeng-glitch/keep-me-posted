@@ -37,67 +37,53 @@ function generateLocalScript(articles, dateLabel) {
   const low    = articles.filter(a => a.impact === 'LOW')
   const parts  = []
 
-  // INTRO
+  // INTRO — describe only what actually exists today
+  const alertSummary = high.length > 0
+    ? `${high.length} critical alert${high.length !== 1 ? 's' : ''} and ${medium.length + low.length} further development${medium.length + low.length !== 1 ? 's' : ''}`
+    : `${articles.length} new development${articles.length !== 1 ? 's' : ''}`
   parts.push(
     `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. ` +
-    `Here is your complete intelligence briefing for the Australian Beef and Lamb industry. ` +
-    `We are tracking ${articles.length} intelligence items today — ` +
-    `${high.length} critical alert${high.length !== 1 ? 's' : ''}, ` +
-    `${medium.length} medium-impact development${medium.length !== 1 ? 's' : ''}, ` +
-    `and ${low.length} lower-priority item${low.length !== 1 ? 's' : ''}.`
+    `Today's briefing covers ${alertSummary} in the Australian beef and lamb industry.`
   )
 
-  // SECTION ONE — CRITICAL ALERTS
+  // SECTION ONE — CRITICAL ALERTS (only when high-impact articles exist)
   if (high.length > 0) {
-    parts.push(
-      `Moving to our critical alerts section. ` +
-      `We have ${high.length} high-impact development${high.length !== 1 ? 's' : ''} requiring your immediate attention.`
-    )
+    parts.push(`Moving to critical alerts. ${high.length} development${high.length !== 1 ? 's' : ''} require your immediate attention.`)
     for (const a of high) {
       const reg = (a.regions ?? []).filter(r => r !== 'National').join(' and ') || 'national operations'
-      const fin = a.financialImpactLabel ? ` Financial exposure is estimated at ${a.financialImpactLabel}.` : ''
       const why = a.whyItMatters ? ` ${a.whyItMatters}` : (a.summary ? ` ${a.summary}` : '')
-      const rec = a.strategicRecommendation ? ` Our recommendation: ${a.strategicRecommendation}.` : ''
-      const stm = a.shortTermImpact ? ` In the short term: ${a.shortTermImpact}.` : ''
-      parts.push(`${a.headline}. This affects ${reg}.${why}${stm}${fin}${rec}`)
+      const rec = a.strategicRecommendation ? ` Recommendation: ${a.strategicRecommendation}.` : ''
+      const stm = a.shortTermImpact ? ` Short-term: ${a.shortTermImpact}.` : ''
+      parts.push(`${a.headline}. This affects ${reg}.${why}${stm}${rec}`)
     }
-  } else {
-    parts.push(`There are no critical high-impact alerts at this time. Moving to market intelligence.`)
   }
 
-  // SECTION TWO — MARKET INTELLIGENCE
-  parts.push(`Moving to our market intelligence section.`)
+  // SECTION TWO — MARKET INTELLIGENCE (only when relevant articles exist)
   const market = articles
     .filter(a => ['Market & Economy', 'Export / Trade', 'Forecasts / Projections', 'Production Costs'].includes(a.category))
     .slice(0, 5)
   if (market.length > 0) {
+    parts.push(`Moving to market intelligence.`)
     for (const a of market) {
       const why = a.whyItMatters ? ` ${a.whyItMatters}` : ''
       const med = a.mediumTermImpact ? ` Looking further ahead: ${a.mediumTermImpact}.` : ''
       parts.push(`${a.headline}.${why}${med}`)
     }
-  } else {
-    parts.push(
-      `No specific market price data is available in today's intelligence feed. ` +
-      `Monitoring continues across all major Australian and international feeds.`
-    )
   }
 
-  // SECTION THREE — GLOBAL SIGNALS
+  // SECTION THREE — GLOBAL SIGNALS (only when international articles exist)
   const global = articles
     .filter(a => (a.regions ?? []).some(r => ['Global', 'USA', 'China', 'International', 'NZ', 'EU', 'Brazil'].includes(r)))
     .slice(0, 4)
   if (global.length > 0) {
-    parts.push(`Moving to global signals that affect Australian beef and lamb exports.`)
+    parts.push(`Moving to global signals.`)
     for (const a of global) {
       const why = a.whyItMatters ? ` ${a.whyItMatters}` : ''
       parts.push(`${a.headline}.${why}`)
     }
-  } else {
-    parts.push(`No major international signals affecting Australian export markets are recorded in this briefing period.`)
   }
 
-  // SECTION FOUR — DOMESTIC INDUSTRY
+  // SECTION FOUR — DOMESTIC INDUSTRY (only when domestic medium/low articles exist)
   const domestic = [...medium, ...low]
     .filter(a => !(a.regions ?? []).some(r => ['Global', 'USA', 'China', 'Brazil', 'EU'].includes(r)))
     .slice(0, 6)
@@ -110,30 +96,19 @@ function generateLocalScript(articles, dateLabel) {
     }
   }
 
-  // SECTION FIVE — STRATEGIC OUTLOOK
-  const topRisk = high[0] ?? medium[0]
-  const topOpp  = medium.find(a => (a.sentiment ?? 0) > 0) ?? medium[0]
-  parts.push(`Moving to our strategic outlook for the week.`)
-  if (topRisk) {
-    parts.push(
-      `The single biggest risk for JBS Southern Australia this week is related to ${topRisk.headline.toLowerCase()}. ` +
-      `${topRisk.strategicRecommendation ? topRisk.strategicRecommendation + '.' : ''}`
-    )
+  // SECTION FIVE — STRATEGIC OUTLOOK (only when enough articles to warrant it)
+  if (articles.length >= 4) {
+    const topRisk = high[0] ?? medium[0]
+    const topOpp  = medium.find(a => (a.sentiment ?? 0) > 0) ?? medium[0]
+    if (topRisk || topOpp) {
+      parts.push(`Finally, the strategic outlook.`)
+      if (topRisk) parts.push(`The biggest risk today: ${topRisk.headline.toLowerCase()}. ${topRisk.strategicRecommendation ?? ''}`)
+      if (topOpp && topOpp !== topRisk) parts.push(`The primary opportunity: ${topOpp.headline.toLowerCase()}. ${topOpp.strategicRecommendation ?? ''}`)
+    }
   }
-  if (topOpp && topOpp !== topRisk) {
-    parts.push(
-      `The primary opportunity this week centres on ${topOpp.headline.toLowerCase()}. ` +
-      `${topOpp.strategicRecommendation ? topOpp.strategicRecommendation + '.' : ''}`
-    )
-  }
-  parts.push(
-    `The operations and commercial teams should review today's high-impact items immediately, ` +
-    `monitor procurement conditions given current market signals, ` +
-    `and ensure biosecurity and supply chain protocols are fully current.`
-  )
 
   // OUTRO
-  parts.push(`That concludes your Grasshopper News briefing for ${dateLabel}. Next update tomorrow morning at six AM. Stay informed, stay ahead.`)
+  parts.push(`That concludes your Grasshopper News briefing for ${dateLabel}. Stay informed, stay ahead.`)
 
   return parts.filter(Boolean).join(' ')
 }

@@ -18,17 +18,23 @@ CRITICAL WRITING RULES:
 - Every number must be spoken as words: "two point three million dollars" not "$2.3M"
 - Section transitions must be spoken naturally: "Moving to our market intelligence section."
 - NEVER invent facts not in the provided articles
-- You MUST use ALL provided articles
-- TARGET: MINIMUM 900 words. Do NOT stop before 900 words.
+- NEVER pad with generic filler — if a section has no relevant articles, skip it entirely
+- You MUST cover ALL provided articles at least once
+- ONLY include sections that have actual content from the provided articles
 
-STRUCTURE:
-INTRO (60-80 words): "Good morning. It is [WEEKDAY], [DATE]. I am your Grasshopper News intelligence analyst. Here is your complete briefing for the Australian Beef and Lamb industry." + one sentence on market mood.
-SECTION ONE — CRITICAL ALERTS (~150 words): All HIGH impact articles — what happened, which region, what JBS should do today.
-SECTION TWO — MARKET INTELLIGENCE (~200 words): AUD/USD, EYCI, SA lamb/beef prices, freight costs, margin interpretation.
-SECTION THREE — GLOBAL SIGNALS (~150 words): US/China trade, FMD outbreaks, shipping disruptions, competitor supply changes.
-SECTION FOUR — DOMESTIC INDUSTRY (~200 words): MEDIUM/LOW AU stories — processing, weather, biosecurity, regulation, MLA/ABARES.
-SECTION FIVE — STRATEGIC OUTLOOK (~150 words): Biggest risk, biggest opportunity, 2-3 recommended actions referencing specific stories.
-OUTRO (40-60 words): "That concludes your Grasshopper News briefing for [DATE]. Next update tomorrow morning at six AM. Stay informed, stay ahead."`
+TARGET LENGTH — scale to the number of articles provided:
+  1–3 articles  → 2–3 minutes (~250–400 words)
+  4–7 articles  → 4–5 minutes (~550–700 words)
+  8+ articles   → 6–8 minutes (~800–1000 words)
+
+STRUCTURE (only include sections with actual content):
+INTRO (40-60 words): "Good morning. It is [WEEKDAY], [DATE]. I am your Grasshopper News intelligence analyst." + brief summary of what is covered today.
+SECTION ONE — CRITICAL ALERTS: Only if HIGH impact articles exist. What happened, which region, what JBS should do today.
+SECTION TWO — MARKET INTELLIGENCE: Only if market/trade/price articles exist.
+SECTION THREE — GLOBAL SIGNALS: Only if articles with international regions exist.
+SECTION FOUR — DOMESTIC INDUSTRY: MEDIUM/LOW AU articles — processing, weather, biosecurity, regulation.
+SECTION FIVE — STRATEGIC OUTLOOK: Only if 4+ articles exist. Biggest risk, biggest opportunity, 1-2 recommended actions.
+OUTRO (20-40 words): "That concludes your Grasshopper News briefing for [DATE]. Stay informed, stay ahead."`
 
 // ── AI-free fallback: generates a full spoken briefing from article data ───────
 
@@ -39,40 +45,41 @@ function buildFallbackScript(articles, dateLabel) {
   const low    = articles.filter(a => a.impact === 'LOW')
   const parts  = []
 
+  // INTRO — scale summary to what actually exists
+  const alertSummary = high.length > 0
+    ? `${high.length} critical alert${high.length !== 1 ? 's' : ''} and ${medium.length + low.length} further development${medium.length + low.length !== 1 ? 's' : ''}`
+    : `${articles.length} new development${articles.length !== 1 ? 's' : ''} across the Australian beef and lamb industry`
   parts.push(
     `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. ` +
-    `Here is your complete intelligence briefing for the Australian Beef and Lamb industry. ` +
-    `We are tracking ${articles.length} intelligence items today — ` +
-    `${high.length} critical alert${high.length !== 1 ? 's' : ''}, ` +
-    `${medium.length} medium-impact development${medium.length !== 1 ? 's' : ''}, ` +
-    `and ${low.length} lower-priority item${low.length !== 1 ? 's' : ''}.`
+    `Today's briefing covers ${alertSummary}.`
   )
 
+  // SECTION ONE — CRITICAL ALERTS (only if there are high-impact items)
   if (high.length > 0) {
-    parts.push(`Moving to our critical alerts section. We have ${high.length} high-impact development${high.length !== 1 ? 's' : ''} requiring immediate attention.`)
+    parts.push(`Moving to critical alerts. ${high.length} high-impact development${high.length !== 1 ? 's' : ''} require your immediate attention.`)
     for (const a of high) {
       const reg = (a.regions ?? []).filter(r => r !== 'National').join(' and ') || 'national operations'
-      const fin = a.financial_impact_label ? ` Financial exposure: ${a.financial_impact_label}.` : ''
       const why = a.why_it_matters ? ` ${a.why_it_matters}` : (a.summary ? ` ${a.summary}` : '')
       const rec = a.strategic_recommendation ? ` Recommendation: ${a.strategic_recommendation}.` : ''
       const stm = a.short_term_impact ? ` Short-term: ${a.short_term_impact}.` : ''
-      parts.push(`${a.headline}. This affects ${reg}.${why}${stm}${fin}${rec}`)
+      parts.push(`${a.headline}. This affects ${reg}.${why}${stm}${rec}`)
     }
-  } else {
-    parts.push(`There are no critical high-impact alerts at this time. Moving to market intelligence.`)
   }
 
-  parts.push(`Moving to our market intelligence section.`)
+  // SECTION TWO — MARKET INTELLIGENCE (only if relevant articles exist)
   const market = articles.filter(a =>
     ['Market & Economy', 'Export / Trade', 'Forecasts / Projections', 'Production Costs'].includes(a.category)
   ).slice(0, 5)
-  for (const a of market) {
-    const why = a.why_it_matters ? ` ${a.why_it_matters}` : ''
-    const med = a.medium_term_impact ? ` Looking ahead: ${a.medium_term_impact}.` : ''
-    parts.push(`${a.headline}.${why}${med}`)
+  if (market.length > 0) {
+    parts.push(`Moving to market intelligence.`)
+    for (const a of market) {
+      const why = a.why_it_matters ? ` ${a.why_it_matters}` : ''
+      const med = a.medium_term_impact ? ` Looking ahead: ${a.medium_term_impact}.` : ''
+      parts.push(`${a.headline}.${why}${med}`)
+    }
   }
-  if (market.length === 0) parts.push(`No specific market price data is available in today's feed. Monitoring continues.`)
 
+  // SECTION THREE — GLOBAL SIGNALS (only if international articles exist)
   const global = articles.filter(a =>
     (a.regions ?? []).some(r => ['Global', 'USA', 'China', 'International', 'NZ', 'EU', 'Brazil'].includes(r))
   ).slice(0, 4)
@@ -84,6 +91,7 @@ function buildFallbackScript(articles, dateLabel) {
     }
   }
 
+  // SECTION FOUR — DOMESTIC INDUSTRY (only if domestic medium/low articles exist)
   const domestic = [...medium, ...low]
     .filter(a => !(a.regions ?? []).some(r => ['Global', 'USA', 'China', 'Brazil', 'EU'].includes(r)))
     .slice(0, 6)
@@ -96,13 +104,16 @@ function buildFallbackScript(articles, dateLabel) {
     }
   }
 
-  const topRisk = high[0] ?? medium[0]
-  const topOpp  = medium.find(a => (a.sentiment ?? 0) > 0) ?? medium[0]
-  parts.push(`Moving to our strategic outlook.`)
-  if (topRisk) parts.push(`The single biggest risk this week: ${topRisk.headline.toLowerCase()}. ${topRisk.strategic_recommendation ?? ''}`)
-  if (topOpp && topOpp !== topRisk) parts.push(`The primary opportunity: ${topOpp.headline.toLowerCase()}. ${topOpp.strategic_recommendation ?? ''}`)
-  parts.push(`The operations and commercial teams should review today's high-impact items immediately and ensure procurement and biosecurity protocols are current.`)
-  parts.push(`That concludes your Grasshopper News briefing for ${dateLabel}. Next update tomorrow morning at six AM. Stay informed, stay ahead.`)
+  // SECTION FIVE — STRATEGIC OUTLOOK (only if enough articles to warrant it)
+  if (articles.length >= 4) {
+    const topRisk = high[0] ?? medium[0]
+    const topOpp  = medium.find(a => (a.sentiment ?? 0) > 0) ?? medium[0]
+    parts.push(`Finally, our strategic outlook.`)
+    if (topRisk) parts.push(`The biggest risk today: ${topRisk.headline.toLowerCase()}. ${topRisk.strategic_recommendation ?? ''}`)
+    if (topOpp && topOpp !== topRisk) parts.push(`The primary opportunity: ${topOpp.headline.toLowerCase()}. ${topOpp.strategic_recommendation ?? ''}`)
+  }
+
+  parts.push(`That concludes your Grasshopper News briefing for ${dateLabel}. Stay informed, stay ahead.`)
 
   return parts.filter(Boolean).join(' ')
 }
@@ -162,24 +173,15 @@ export default async function handler(req, res) {
   // ── 3. Fetch articles (36 h → 7 day fallback) ──────────────────────────────
   const COLS = 'id,headline,summary,why_it_matters,category,impact,regions,source,published_at,short_term_impact,medium_term_impact,strategic_recommendation,financial_impact_label,financial_impact_high_aud,sentiment'
 
-  let articles = []
+  // Only use articles from the last 36 hours — no 7-day fallback.
+  // If nothing is new, the briefing will say so rather than repeating old news.
   const cutoff36h = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
   const r36 = await fetch(
     `${supabaseUrl}/rest/v1/articles?select=${COLS}&created_at=gte.${cutoff36h}&order=confidence_score.desc&limit=25`,
     { headers }
   )
   const data36 = await r36.json()
-  if (Array.isArray(data36) && data36.length > 0) {
-    articles = data36
-  } else {
-    const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-    const r7d = await fetch(
-      `${supabaseUrl}/rest/v1/articles?select=${COLS}&created_at=gte.${cutoff7d}&order=confidence_score.desc&limit=25`,
-      { headers }
-    )
-    const data7d = await r7d.json()
-    articles = Array.isArray(data7d) ? data7d : []
-  }
+  const articles = Array.isArray(data36) ? data36 : []
 
   // Sort: HIGH first, then MEDIUM, then LOW
   const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 }
@@ -195,7 +197,7 @@ export default async function handler(req, res) {
   // Groq upgrades it to a polished 900-word script when available.
   let briefingText = articles.length > 0
     ? buildFallbackScript(articles, dateLabel)
-    : `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. No new intelligence has been recorded in the last thirty-six hours. Monitoring continues. Stay informed, stay ahead.`
+    : `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. There are no new developments in the Australian beef and lamb industry in the last thirty-six hours. Monitoring continues across all major feeds. Stay informed, stay ahead.`
 
   if (articles.length > 0 && groqApiKey) {
     const IMPACT_ORD = { HIGH: 0, MEDIUM: 1, LOW: 2 }
@@ -209,10 +211,12 @@ export default async function handler(req, res) {
       `Recommendation: ${a.strategic_recommendation ?? 'N/A'}`,
     ].join('\n')).join('\n\n---\n\n')
 
+    const targetWords = articles.length <= 3 ? '250–400' : articles.length <= 7 ? '550–700' : '800–1000'
     const userPrompt = [
       `DATE: ${dateLabel}`,
       `TOTAL ARTICLES: ${articles.length}`,
-      `YOU MUST USE ALL ${articles.length} ARTICLES. DO NOT STOP BEFORE 900 WORDS.`,
+      `TARGET LENGTH: ${targetWords} words — scale to the content, do not pad.`,
+      `YOU MUST COVER ALL ${articles.length} ARTICLES. ONLY include sections that have relevant articles.`,
       ``,
       articlesText,
     ].join('\n')
