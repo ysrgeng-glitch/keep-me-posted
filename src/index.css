@@ -1139,14 +1139,83 @@ img { max-width: 100%; display: block; }
   .article-analysis-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); transition: transform var(--ease-normal); }
+  .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
   .sidebar.open { transform: translateX(0); }
   .main-area { margin-left: 0; }
-  .header { padding: 0 16px; }
+  .header { padding: 0 14px; gap: 10px; }
   .header-center { display: none; }
-  .page-content { padding: 16px; }
+  .header-last-refreshed { display: none; }
+  .header-refresh-label { display: none; }
+  .page-content { padding: 14px; }
+  .page-header { margin-bottom: 16px; padding-bottom: 12px; }
+  .page-header-title { font-size: 1.4rem; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-card { padding: 14px 14px; }
+  .kpi-value { font-size: 1.65rem; }
   .article-header { padding: 18px 16px; }
   .article-headline { font-size: 1.4rem; }
+  .article-detail-wrap { max-width: 100%; }
   .market-signals-grid { grid-template-columns: 1fr 1fr; }
+  .daily-summary { padding: 16px 18px; }
+  .podcast-player { padding: 16px 18px 0; }
+  .podcast-header { gap: 12px; }
+  .podcast-episode { font-size: 0.875rem; }
+  .podcast-btn--main { width: 44px; height: 44px; }
+  .filters-bar { padding: 10px 12px; }
+  .filters-row { gap: 8px; }
+  .filter-select { min-width: 0; flex: 1; }
+  .filter-group { flex: 1; min-width: calc(50% - 4px); }
+  .filter-divider { display: none; }
+  .filters-results { width: 100%; margin-left: 0; }
+  .section-header { margin-bottom: 10px; }
+  .chart-card { padding: 16px; }
+}
+
+/* ── Mobile small (≤480px) — tighter adjustments ── */
+@media (max-width: 480px) {
+  .page-content { padding: 12px; }
+  .kpi-grid { gap: 8px; }
+  .kpi-card { padding: 12px 12px; }
+  .kpi-value { font-size: 1.5rem; }
+  .kpi-label { font-size: 0.6rem; }
+  .kpi-meta { font-size: 0.75rem; }
+  .market-signals-grid { grid-template-columns: 1fr; }
+  .market-signal-value { font-size: 1.35rem; }
+  .category-breakdown-name { width: 120px; font-size: 0.8125rem; }
+  .nc-footer .confidence-score { display: none; }
+  .article-headline { font-size: 1.25rem; }
+  .article-header { padding: 14px 14px; }
+  .daily-summary { padding: 14px; }
+  .podcast-player { padding: 14px 14px 0; }
+  .podcast-cover { width: 44px; height: 44px; }
+  .podcast-cover svg { width: 18px; height: 18px; }
+  .section-header { margin-bottom: 8px; }
+}
+
+/* ── Hamburger button — hidden on desktop, shown on mobile ── */
+.header-menu-btn {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--ease-fast), border-color var(--ease-fast);
+}
+.header-menu-btn:hover { background: var(--bg-secondary); border-color: var(--border-medium); }
+.header-menu-btn svg { width: 18px; height: 18px; }
+
+/* ── Mobile sidebar overlay ── */
+.sidebar-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 99;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+@media (max-width: 768px) {
+  .header-menu-btn { display: flex; }
 }

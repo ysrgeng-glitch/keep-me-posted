@@ -15,6 +15,20 @@ function IconRefresh() {
     </svg>
   )
 }
+function IconMenu() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  )
+}
+function IconClose() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
 
 const PAGE_META = {
   '/':         { title: 'Intelligence Dashboard',        subtitle: 'Grasshopper News — Australian Beef & Lamb Intelligence, Powered by AI' },
@@ -22,7 +36,7 @@ const PAGE_META = {
   '/forecast': { title: 'Forecast & Market Signals',     subtitle: 'Price projections and forward indicators' },
 }
 
-export default function Header({ pathname, onRefresh, loading, searchQuery, onSearchChange, lastRefreshed }) {
+export default function Header({ pathname, onRefresh, loading, searchQuery, onSearchChange, lastRefreshed, onToggleSidebar, sidebarOpen }) {
   const meta = PAGE_META[pathname] ?? { title: 'Grasshopper News', subtitle: '' }
 
   const lastRefreshedStr = lastRefreshed
@@ -31,6 +45,16 @@ export default function Header({ pathname, onRefresh, loading, searchQuery, onSe
 
   return (
     <header className="header">
+      {/* Hamburger — mobile only */}
+      <button
+        className="header-menu-btn"
+        onClick={onToggleSidebar}
+        aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={sidebarOpen}
+      >
+        {sidebarOpen ? <IconClose /> : <IconMenu />}
+      </button>
+
       {/* Page title */}
       <div className="header-left">
         <span className="header-title">{meta.title}</span>
@@ -65,7 +89,7 @@ export default function Header({ pathname, onRefresh, loading, searchQuery, onSe
           <span style={{ display: 'inline-block', animation: loading ? 'spin 1s linear infinite' : 'none' }}>
             <IconRefresh />
           </span>
-          {loading ? 'Refreshing…' : 'Refresh Intelligence'}
+          <span className="header-refresh-label">{loading ? 'Refreshing…' : 'Refresh'}</span>
         </button>
 
         <div className="header-live-badge">

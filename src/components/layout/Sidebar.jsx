@@ -14,11 +14,11 @@ function IconBrand() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
 }
 
-export default function Sidebar({ highImpactCount, lastRefreshed, usingLive }) {
+export default function Sidebar({ isOpen, highImpactCount, lastRefreshed, usingLive }) {
   const location = useLocation()
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${isOpen ? ' open' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <NavLink to="/" className="sidebar-brand-logo">

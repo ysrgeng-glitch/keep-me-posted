@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
@@ -24,14 +25,34 @@ function Footer() {
 
 export default function Layout({ children, stats, loading, onRefresh, lastRefreshed, searchQuery, onSearchChange, usingLive }) {
   const { pathname } = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Close sidebar whenever the user navigates to a new page
+  useEffect(() => { setSidebarOpen(false) }, [pathname])
+
+  // Prevent body scroll while mobile sidebar is open
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [sidebarOpen])
 
   return (
     <div className="app-shell">
       <Sidebar
+        isOpen={sidebarOpen}
         highImpactCount={stats?.impactBreakdown?.HIGH ?? 0}
         lastRefreshed={lastRefreshed}
         usingLive={usingLive}
       />
+
+      {/* Dark overlay behind sidebar on mobile — tap to close */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       <div className="main-area">
         <Header
@@ -41,6 +62,8 @@ export default function Layout({ children, stats, loading, onRefresh, lastRefres
           searchQuery={searchQuery}
           onSearchChange={onSearchChange}
           lastRefreshed={lastRefreshed}
+          onToggleSidebar={() => setSidebarOpen(o => !o)}
+          sidebarOpen={sidebarOpen}
         />
         <main className="page-content">
           {children}
