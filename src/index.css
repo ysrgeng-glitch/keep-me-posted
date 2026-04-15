@@ -1139,36 +1139,68 @@ img { max-width: 100%; display: block; }
   .article-analysis-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  /* ── FIX 1: Natural page scroll — footer at true bottom ────────────────
+     Root cause: app-shell was height:100vh + overflow:hidden, trapping the
+     footer inside the viewport. Switching to natural flow lets body scroll
+     and footer appear only after all content. */
+  .app-shell    { height: auto; min-height: 100svh; min-height: 100dvh; overflow-x: hidden; overflow-y: visible; }
+  .main-area    { overflow: visible; }
+  .page-content { overflow-y: visible; flex: none; height: auto;
+                  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ── FIX 2: Header — hide overflowing subtitle ─────────────────────────
+     Root cause: header has fixed height:58px but no overflow:hidden, so the
+     long subtitle wrapped and bled over the page content below. */
+  .header          { overflow: hidden; padding: 0 14px;
+                     padding-right: calc(14px + env(safe-area-inset-right, 0px));
+                     padding-left:  calc(14px + env(safe-area-inset-left,  0px));
+                     gap: 10px; }
+  .header-subtitle { display: none; }
+  .header-title    { font-size: 0.9375rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .header-center        { display: none; }
+  .header-last-refreshed{ display: none; }
+  .header-refresh-label { display: none; }
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────── */
   .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; }
   .sidebar.open { transform: translateX(0); }
   .main-area { margin-left: 0; }
-  .header { padding: 0 14px; gap: 10px; }
-  .header-center { display: none; }
-  .header-last-refreshed { display: none; }
-  .header-refresh-label { display: none; }
-  .page-content { padding: 14px; }
+
+  /* ── Content spacing ─────────────────────────────────────────────────── */
+  .page-content { padding: 14px 14px; }
   .page-header { margin-bottom: 16px; padding-bottom: 12px; }
   .page-header-title { font-size: 1.4rem; }
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .kpi-card { padding: 14px 14px; }
+  .section-header { margin-bottom: 10px; }
+
+  /* ── KPI cards ───────────────────────────────────────────────────────── */
+  .kpi-grid  { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi-card  { padding: 14px; }
   .kpi-value { font-size: 1.65rem; }
-  .article-header { padding: 18px 16px; }
-  .article-headline { font-size: 1.4rem; }
+
+  /* ── Article ─────────────────────────────────────────────────────────── */
+  .article-header      { padding: 18px 16px; }
+  .article-headline    { font-size: 1.4rem; }
   .article-detail-wrap { max-width: 100%; }
+
+  /* ── Forecast / market ───────────────────────────────────────────────── */
   .market-signals-grid { grid-template-columns: 1fr 1fr; }
-  .daily-summary { padding: 16px 18px; }
-  .podcast-player { padding: 16px 18px 0; }
-  .podcast-header { gap: 12px; }
+  .chart-card          { padding: 16px; }
+
+  /* ── Dashboard cards ─────────────────────────────────────────────────── */
+  .daily-summary   { padding: 16px 18px; }
+  .podcast-player  { padding: 16px 18px 0; }
+  .podcast-header  { gap: 12px; }
   .podcast-episode { font-size: 0.875rem; }
   .podcast-btn--main { width: 44px; height: 44px; }
-  .filters-bar { padding: 10px 12px; }
-  .filters-row { gap: 8px; }
-  .filter-select { min-width: 0; flex: 1; }
-  .filter-group { flex: 1; min-width: calc(50% - 4px); }
-  .filter-divider { display: none; }
+
+  /* ── Filters ─────────────────────────────────────────────────────────── */
+  .filters-bar     { padding: 10px 12px; }
+  .filters-row     { gap: 8px; }
+  .filter-select   { min-width: 0; flex: 1; }
+  .filter-group    { flex: 1; min-width: calc(50% - 4px); }
+  .filter-divider  { display: none; }
   .filters-results { width: 100%; margin-left: 0; }
-  .section-header { margin-bottom: 10px; }
-  .chart-card { padding: 16px; }
 }
 
 /* ── Mobile small (≤480px) — tighter adjustments ── */
