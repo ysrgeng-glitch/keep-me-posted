@@ -2,12 +2,10 @@ import ForecastChart from '../components/forecast/ForecastChart'
 import SentimentChart from '../components/forecast/SentimentChart'
 import MarketSignals from '../components/forecast/MarketSignals'
 import { useForecastData } from '../hooks/useForecastData'
-import { mockForecastData } from '../data/mockData'
 
 export default function Forecast() {
-  const { signals, loading, updatedAt, beefForecast, lambForecast } = useForecastData()
-  const { sentimentTimeline, categoryBreakdown } = mockForecastData
-  const maxCount = Math.max(...categoryBreakdown.map((d) => d.count))
+  const { signals, loading, updatedAt, beefForecast, lambForecast, sentimentTimeline, categoryBreakdown } = useForecastData()
+  const maxCount = categoryBreakdown.length > 0 ? Math.max(...categoryBreakdown.map((d) => d.count)) : 1
 
   const updatedStr = updatedAt
     ? updatedAt.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })

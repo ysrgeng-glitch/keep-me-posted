@@ -5,9 +5,62 @@
  * 1. AUD/USD — fetched live from open.er-api.com
  * 2. Livestock prices — scraped from MLA weekly market wrap (plain HTML article)
  *    Falls back to last known verified values (MLA April 2026 data) if fetch fails.
+ * 3. Weekly prices upserted to Supabase price_history table for trend analysis.
  *
  * Response is CDN-cached for 1 hour, stale-while-revalidate for 2 hours.
  */
+
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+/** Returns the ISO week Monday (YYYY-MM-DD) for a given date */
+function getISOWeekStart(date = new Date()) {
+  const d = new Date(date)
+  const day = d.getUTCDay() // 0=Sun … 6=Sat
+  const diff = day === 0 ? -6 : 1 - day // shift to Monday
+  d.setUTCDate(d.getUTCDate() + diff)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Upsert this week's price snapshot to price_history */
+async function savePriceHistory(result) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return
+  try {
+    const row = {
+      week_start:   getISOWeekStart(),
+      beef_price:   result.beef?.value   ?? null,
+      lamb_price:   result.lamb?.value   ?? null,
+      mutton_price: result.mutton?.value ?? null,
+      audusd:       result.audusd?.value ?? null,
+      beef_name:    result.beef?.name    ?? null,
+      lamb_name:    result.lamb?.name    ?? null,
+      source:       result.source === 'mla' ? 'MLA' : 'fallback',
+      is_fallback:  result.source !== 'mla',
+    }
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/price_history`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'apikey':         SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Prefer':        'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(row),
+        signal: AbortSignal.timeout(8_000),
+      }
+    )
+    if (!r.ok) {
+      const text = await r.text()
+      console.warn('market-prices: price_history upsert failed:', r.status, text)
+    } else {
+      console.log(`market-prices: upserted price_history for week ${row.week_start}`)
+    }
+  } catch (e) {
+    console.warn('market-prices: price_history upsert error:', e.message)
+  }
+}
 
 const MLA_WRAP_BASE =
   'https://www.mla.com.au/news-and-events/industry-news/'
@@ -184,6 +237,10 @@ export default async function handler(req, res) {
       isFallback: true,
     }
   }
+
+  // ── 4. Persist this week's snapshot to price_history ────────────────────────
+  // Fire-and-forget — don't block the response
+  savePriceHistory(result).catch(() => {})
 
   return res.status(200).json(result)
 }
