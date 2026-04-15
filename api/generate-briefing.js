@@ -170,34 +170,52 @@ export default async function handler(req, res) {
     )
   }
 
-  // ── 3. Fetch articles (36 h → 7 day fallback) ──────────────────────────────
+  // ── 3. Fetch articles (last 24 hours only) ─────────────────────────────────
   const COLS = 'id,headline,summary,why_it_matters,category,impact,regions,source,published_at,short_term_impact,medium_term_impact,strategic_recommendation,financial_impact_label,financial_impact_high_aud,sentiment'
 
-  // Only use articles from the last 36 hours — no 7-day fallback.
-  // If nothing is new, the briefing will say so rather than repeating old news.
-  const cutoff36h = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
-  const r36 = await fetch(
-    `${supabaseUrl}/rest/v1/articles?select=${COLS}&created_at=gte.${cutoff36h}&order=confidence_score.desc&limit=25`,
+  // Strict 24-hour window — briefing covers today's news only.
+  // If nothing is new in the last 24 hours, the briefing will say so.
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const r24 = await fetch(
+    `${supabaseUrl}/rest/v1/articles?select=${COLS}&created_at=gte.${cutoff24h}&order=confidence_score.desc&limit=50`,
     { headers }
   )
-  const data36 = await r36.json()
-  const articles = Array.isArray(data36) ? data36 : []
+  const data24 = await r24.json()
+  const rawArticles = Array.isArray(data24) ? data24 : []
 
-  // Sort: HIGH first, then MEDIUM, then LOW
+  // Deduplicate: same story published by multiple sources → keep highest confidence_score
+  // Uses a simple headline fingerprint (lowercased, punctuation stripped, stop words removed)
+  const STOP = new Set(['the','a','an','in','on','at','of','to','and','or','for','with','by','as',
+    'is','are','was','were','be','been','has','have','had','will','would','could','its','it',
+    'this','that','from','up','out','new','say','says','said'])
+  function fingerprint(headline) {
+    return (headline ?? '').toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length > 1 && !STOP.has(w)).join(' ').slice(0, 80)
+  }
+  const seen = new Set()
+  const articles = rawArticles.filter(a => {
+    const fp = fingerprint(a.headline)
+    if (seen.has(fp)) return false
+    seen.add(fp)
+    return true
+  })
+
+  // Sort: HIGH first, then MEDIUM, then LOW, newest first within each group
   const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 }
   articles.sort((a, b) => {
     const d = (ORDER[a.impact] ?? 2) - (ORDER[b.impact] ?? 2)
     return d !== 0 ? d : new Date(b.published_at) - new Date(a.published_at)
   })
 
-  console.log(`generate-briefing: ${articles.length} articles (force=${force})`)
+  console.log(`generate-briefing: ${rawArticles.length} raw → ${articles.length} after dedup (force=${force})`)
 
   // ── 4. Build briefing text ──────────────────────────────────────────────────
   // Always generate the AI-free fallback first — guaranteed real content.
   // Groq upgrades it to a polished 900-word script when available.
   let briefingText = articles.length > 0
     ? buildFallbackScript(articles, dateLabel)
-    : `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. There are no new developments in the Australian beef and lamb industry in the last thirty-six hours. Monitoring continues across all major feeds. Stay informed, stay ahead.`
+    : `Good morning. It is ${dateLabel}. I am your Grasshopper News intelligence analyst. There are no new developments in the Australian beef and lamb industry in the last twenty-four hours. Monitoring continues across all major feeds. Stay informed, stay ahead.`
 
   if (articles.length > 0 && groqApiKey) {
     const IMPACT_ORD = { HIGH: 0, MEDIUM: 1, LOW: 2 }

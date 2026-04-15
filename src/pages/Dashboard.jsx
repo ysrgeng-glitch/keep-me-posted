@@ -158,7 +158,13 @@ function PodcastPlayer({ briefing, refreshBriefing, allArticles }) {
           weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
         })
 
-    return generateLocalScript(allArticles ?? [], dateLabel)
+    // Filter to last 24 hours before generating locally — same window as the server
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const recent = (allArticles ?? []).filter(a => {
+      const ts = a.publishedAt ?? a.published_at
+      return ts ? new Date(ts) >= cutoff24h : false
+    })
+    return generateLocalScript(recent, dateLabel)
   }, [briefing?.briefing_text, briefing?.briefing_date, allArticles])
 
   const wordCount        = useMemo(() => ttsText.split(/\s+/).filter(Boolean).length, [ttsText])
