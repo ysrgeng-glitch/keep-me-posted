@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { getSentimentDescriptor, formatAUD } from '../../utils/scoring'
 
 function IconArticles() {
@@ -37,8 +38,8 @@ export default function KPICards({ stats, articles }) {
   return (
     <div className="kpi-grid">
 
-      {/* Articles monitored */}
-      <div className="kpi-card kpi-card--green">
+      {/* Articles monitored → all news */}
+      <Link to="/news" className="kpi-card kpi-card--green">
         <div className="kpi-icon"><IconArticles /></div>
         <div className="kpi-label">Articles Monitored</div>
         <div className="kpi-value">{totalCount}</div>
@@ -46,30 +47,30 @@ export default function KPICards({ stats, articles }) {
           <span>{mediumCount + highCount} significant</span>
           <span style={{ marginLeft: 'auto', opacity: 0.7 }}>{activeSources} sources</span>
         </div>
-      </div>
+      </Link>
 
-      {/* High impact */}
-      <div className="kpi-card kpi-card--red">
+      {/* High impact → news filtered to HIGH */}
+      <Link to="/news?impact=HIGH" className="kpi-card kpi-card--red">
         <div className="kpi-icon"><IconAlert /></div>
         <div className="kpi-label">High Impact Alerts</div>
         <div className="kpi-value kpi-value--red">{highCount}</div>
         <div className="kpi-meta">
           <span>{mediumCount} medium-impact</span>
         </div>
-      </div>
+      </Link>
 
-      {/* Verified intelligence */}
-      <div className="kpi-card kpi-card--blue">
+      {/* Verified intelligence → news filtered to verified */}
+      <Link to="/news?verification=VERIFIED" className="kpi-card kpi-card--blue">
         <div className="kpi-icon"><IconShield /></div>
         <div className="kpi-label">Verified Intelligence</div>
         <div className="kpi-value">{verifiedCount}</div>
         <div className="kpi-meta">
           <span>{verifiedPct}% of total verified</span>
         </div>
-      </div>
+      </Link>
 
-      {/* Financial exposure */}
-      <div className="kpi-card kpi-card--gold">
+      {/* Financial exposure → news filtered to HIGH impact */}
+      <Link to="/news?impact=HIGH" className="kpi-card kpi-card--gold">
         <div className="kpi-icon"><IconDollar /></div>
         <div className="kpi-label">High-Impact Exposure</div>
         <div className="kpi-value" style={{ fontSize: '1.35rem', color: highCount > 0 ? '#b91c1c' : 'var(--text-primary)' }}>
@@ -78,7 +79,7 @@ export default function KPICards({ stats, articles }) {
         <div className="kpi-meta">
           <span style={{ color: 'var(--text-muted)' }}>AUD max estimate</span>
         </div>
-      </div>
+      </Link>
 
     </div>
   )

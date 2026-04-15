@@ -12,12 +12,14 @@ export default function NewsFeed({ articles, filters, setFilter, resetFilters, l
   // Reset display limit when filters change
   useEffect(() => { setDisplayLimit(PAGE_SIZE) }, [filters])
 
-  // Sync URL params (e.g. ?region=SA) into filters whenever the URL changes
+  // Sync URL params into filters whenever the URL changes
   useEffect(() => {
-    const region = searchParams.get('region')
-    const impact = searchParams.get('impact')
-    setFilter('region', region ?? 'ALL')
-    if (impact) setFilter('impact', impact)
+    const region       = searchParams.get('region')
+    const impact       = searchParams.get('impact')
+    const verification = searchParams.get('verification')
+    setFilter('region',       region       ?? 'ALL')
+    setFilter('impact',       impact       ?? 'ALL')
+    setFilter('verification', verification ?? 'ALL')
   }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible    = articles.slice(0, displayLimit)
