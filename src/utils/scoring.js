@@ -39,6 +39,7 @@ export const SENTIMENT = {
 
 export const VERIFICATION_LABELS = {
   VERIFIED_OFFICIAL: { label: 'Official Source',    short: 'Official',  color: '#15803d', bg: '#dcfce7', icon: '✓' },
+  VERIFIED_MULTI:    { label: 'Multi-Source',       short: 'Multi',     color: '#15803d', bg: '#dcfce7', icon: '✓' },
   ANALYST_INFERENCE: { label: 'Trusted Industry',   short: 'Trusted',   color: '#1d4ed8', bg: '#dbeafe', icon: '◈' },
   UNCONFIRMED:       { label: 'Unconfirmed',        short: 'Unconfirmed',color: '#6b7280', bg: '#f3f4f6', icon: '?' },
 }

@@ -4,7 +4,8 @@ export default function VerificationBadge({ status, compact = false }) {
   // Don't show a badge for unconfirmed items — only display verified/analyst status
   if (!status || status === 'UNCONFIRMED') return null
 
-  const meta = VERIFICATION_LABELS[status] ?? VERIFICATION_LABELS.UNCONFIRMED
+  const meta = VERIFICATION_LABELS[status]
+  if (!meta) return null  // unknown status — don't show anything
 
   if (compact) {
     return (
